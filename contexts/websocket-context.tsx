@@ -367,14 +367,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const sendMessage = useCallback((data: SendMessageData) => {
-    const readyState = wsRef.current?.readyState;
+    const ws = wsRef.current;
+    const readyState = ws?.readyState;
     const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
-    
-    if (readyState !== WebSocket.OPEN) {
+
+    if (!ws || readyState !== WebSocket.OPEN) {
       console.error('❌ [WebSocket] Cannot send message - WebSocket not open');
       console.error('❌ [WebSocket] Current readyState:', readyState !== undefined ? readyStateNames[readyState] : 'undefined');
       console.error('❌ [WebSocket] Connection state:', state);
-      console.error('❌ [WebSocket] WebSocket instance exists:', !!wsRef.current);
+      console.error('❌ [WebSocket] WebSocket instance exists:', !!ws);
       console.error('❌ [WebSocket] Message data:', JSON.stringify(data).substring(0, 100));
       return;
     }
@@ -388,23 +389,19 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     const messageStr = JSON.stringify(message);
     console.log('📤 [WebSocket] Sending ChatMessage:', messageStr.substring(0, 200));
-    // At this point we already know readyState === OPEN, but add a final defensive check for TypeScript
-    if (wsRef.current) {
-      wsRef.current.send(messageStr);
-    } else {
-      console.error('❌ [WebSocket] Tried to send message but wsRef.current was null after readyState check');
-    }
+    ws.send(messageStr);
   }, [state]);
 
   const sendStop = useCallback((chatId: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const stopMessage: WebSocketMessage = {
       type: MessageType.StopGeneration,
       payload: { chat_id: chatId },
       timestamp: Date.now(),
       message_id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
     } as any;
-    wsRef.current.send(JSON.stringify(stopMessage));
+    ws.send(JSON.stringify(stopMessage));
   }, []);
 
   const joinChat = useCallback((chatId: string, userId?: string) => {
