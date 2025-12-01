@@ -7,7 +7,6 @@ import { CartProvider } from "../contexts/cart-context";
 import { SplitScreenProvider } from "../contexts/SplitScreenProvider";
 import { UserInfoProvider } from "../contexts/UserInfoProvider";
 import { WebSocketProvider } from "../contexts/websocket-context";
-import { DocumentsProvider } from "../contexts/DocumentsProvider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -21,11 +20,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <WebSocketProvider>
           <SplitScreenProvider>
             <UserInfoProvider>
-              <DocumentsProvider>
-                <CartProvider>
-                  {children}
-                </CartProvider>
-              </DocumentsProvider>
+              <CartProvider>
+                {children}
+              </CartProvider>
             </UserInfoProvider>
           </SplitScreenProvider>
         </WebSocketProvider>

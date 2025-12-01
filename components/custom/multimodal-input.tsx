@@ -2,7 +2,6 @@
 
 import { Attachment, ChatRequestOptions, CreateMessage, Message } from "ai";
 import { motion, AnimatePresence } from "framer-motion";
-import { FileText, X, CheckCircle, Loader2, Upload } from "lucide-react";
 import {
   useRef,
   useEffect,
@@ -14,13 +13,11 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { ArrowUpIcon, StopIcon, GlobeIcon, ImageIcon, AtIcon, LoaderIcon } from "./icons";
+import { ArrowUpIcon, StopIcon, GlobeIcon, ImageIcon, LoaderIcon } from "./icons";
 import Logo from "./logo";
 import { PreviewAttachment } from "./preview-attachment";
 import useWindowSize from "./use-window-size";
-import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
-import { useDocuments } from "../../contexts/DocumentsProvider";
 
 // Removed static time-based greetings; we fetch a dynamic title and show skeleton while loading
 
@@ -58,8 +55,6 @@ export function MultimodalInput({
   messages,
   append,
   handleSubmit,
-  selectedDocuments,
-  setSelectedDocuments,
 }: {
   input: string;
   setInput: (value: string) => void;
@@ -79,18 +74,10 @@ export function MultimodalInput({
     },
     chatRequestOptions?: ChatRequestOptions,
   ) => void;
-  selectedDocuments: string[];
-  setSelectedDocuments: Dispatch<SetStateAction<string[]>>;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
   const [pageTitleBase] = useState<string>("OMS Chat Assistant");
-  const [showDocsHint, setShowDocsHint] = useState(false);
-  const { documents, isLoading: isLoadingDocs, refetch: refetchDocuments, updateDocumentStatus } = useDocuments();
-  const docsHintRef = useRef<HTMLDivElement>(null);
-  const documentUploadInputRef = useRef<HTMLInputElement>(null);
-  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
-  const fileDialogOpenRef = useRef(false);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -122,7 +109,6 @@ export function MultimodalInput({
     });
 
     setAttachments([]);
-    setShowDocsHint(false);
 
     if (width && width > 768) {
       textareaRef.current?.focus();
@@ -188,94 +174,6 @@ export function MultimodalInput({
   const [isTitleLoading, setIsTitleLoading] = useState<boolean>(true);
   const [isClient, setIsClient] = useState(false);
   useEffect(() => { setIsClient(true); }, []);
-
-  // Documents are now managed by DocumentsProvider context
-  // No need to fetch here - context handles it globally
-
-  const toggleDocumentSelection = (documentId: string) => {
-    setSelectedDocuments(prev => {
-      if (prev.includes(documentId)) {
-        return prev.filter(id => id !== documentId);
-      } else {
-        return [...prev, documentId];
-      }
-    });
-  };
-
-  const handleDocumentUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    // If user canceled picker, just reset the flag and bail
-    if (!file) {
-      fileDialogOpenRef.current = false;
-      return;
-    }
-
-    setIsUploadingDocument(true);
-    try {
-      console.log('[MultimodalInput] Upload start', {
-        name: file.name,
-        type: file.type,
-        size: file.size
-      });
-      const formData = new FormData();
-      formData.append('file', file);
-
-      console.log('[MultimodalInput] POST /api/upload-document ...');
-      const response = await fetch('/api/upload-document', {
-        method: 'POST',
-        body: formData,
-      });
-
-      console.log('[MultimodalInput] /api/upload-document response', response.status, response.statusText);
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('[MultimodalInput] Upload failed response body:', error);
-        throw new Error(error.error || 'Upload failed');
-      }
-
-      const result = await response.json();
-      console.log('[MultimodalInput] Upload success payload:', result);
-      
-      if (result.success) {
-        toast.success('Document uploaded successfully');
-        
-        // Dispatch event - DocumentsProvider will listen and refresh
-        window.dispatchEvent(new CustomEvent('document-uploaded', { 
-          detail: { documentId: result.document.id } 
-        }));
-        
-        // Also refresh immediately
-        refetchDocuments();
-      } else {
-        throw new Error(result.error || 'Upload failed');
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to upload document');
-    } finally {
-      setIsUploadingDocument(false);
-      fileDialogOpenRef.current = false;
-      // Reset file input
-      if (documentUploadInputRef.current) {
-        documentUploadInputRef.current.value = '';
-      }
-    }
-  };
-
-  // Safety: if the user cancels the dialog and focus returns, clear the flag
-  useEffect(() => {
-    const onWindowFocus = () => {
-      // Delay slightly to allow onChange to fire if a file was picked
-      setTimeout(() => {
-        fileDialogOpenRef.current = false;
-      }, 300);
-    };
-    window.addEventListener('focus', onWindowFocus);
-    return () => window.removeEventListener('focus', onWindowFocus);
-  }, []);
-
-  const completedDocuments = documents.filter(doc => doc.processing_status === 'completed');
-  const allDocuments = documents; // Show all documents, not just completed ones
 
   // Update document title for SEO when there's no conversation yet
   useEffect(() => {
@@ -438,28 +336,6 @@ export function MultimodalInput({
       )}
 
       <div className={`relative w-full bg-card border border-border rounded-xl shadow-sm focus-within:shadow-md transition-shadow overflow-visible group ${isCreatingChat ? 'animate-pulse' : ''}`} aria-busy={isCreatingChat ? true : undefined}>
-        {selectedDocuments.length > 0 && (
-          <div className="flex items-center gap-2 px-4 pt-3 pb-1 overflow-x-auto">
-            {selectedDocuments.map((docId) => {
-              const doc = documents.find((d) => d.id === docId);
-              if (!doc) return null;
-              return (
-                <div key={docId} className="flex items-center gap-2 rounded-full bg-muted text-sm text-foreground pl-2 pr-1 py-1 border border-border shrink-0">
-                  <FileText className="size-4 text-muted-foreground" />
-                  <span className="max-w-[200px] truncate">{doc.original_name}</span>
-                  <button
-                    type="button"
-                    onClick={() => toggleDocumentSelection(docId)}
-                    className="inline-flex items-center justify-center size-5 rounded-full hover:bg-accent text-muted-foreground"
-                    aria-label="Remove reference"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
         {isCreatingChat && (
           <div className="pointer-events-none absolute inset-0 z-0">
             <div 
@@ -505,160 +381,23 @@ export function MultimodalInput({
             className={`w-full min-h-[32px] max-h-[200px] overflow-y-auto resize-none text-sm bg-transparent border-0 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 px-4 pb-1.5 shadow-none ${messages.length > 0 ? 'pt-3' : 'pt-4'}`}
             rows={2}
             onKeyDown={(event) => {
-              // Handle @ key (Shift+2 on US keyboards, or @ key directly)
-              if ((event.shiftKey && event.key === "2") || event.key === "@") {
-                event.preventDefault();
-                setShowDocsHint(true);
-                return;
-              }
-              if (event.key === "Escape") {
-                setShowDocsHint(false);
-              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
 
                 if (isLoading) {
                   toast.error("Please wait for the model to finish its response!");
                 } else {
-                  setShowDocsHint(false);
                   submitForm();
                 }
               }
             }}
-            onBlur={(e) => {
-              // Only close if the blur is not caused by clicking inside the modal
-              // Use setTimeout to check if the new focus is inside the modal
-              setTimeout(() => {
-                if (fileDialogOpenRef.current) return; // keep open while file dialog is up
-                if (docsHintRef.current && !docsHintRef.current.contains(document.activeElement)) {
-                  setShowDocsHint(false);
-                }
-              }, 200);
-            }}
           />
         </div>
 
-        {showDocsHint && (
-          <div 
-            ref={docsHintRef}
-            className="absolute bottom-full mb-2 left-4 z-50 w-80 max-w-[calc(100vw-2rem)]"
-            onMouseDown={(e) => e.preventDefault()} // Prevent blur when clicking inside modal
-          >
-            <div className="rounded-md border bg-popover text-popover-foreground shadow-lg max-h-[400px] overflow-hidden flex flex-col">
-              <div className="px-3 py-2 border-b flex items-center justify-between">
-                <span className="text-sm font-medium">Select Documents</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={documentUploadInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls"
-                    onChange={handleDocumentUpload}
-                    className="hidden"
-                    disabled={isUploadingDocument}
-                  />
-                  <button
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault(); // Prevent blur
-                      e.stopPropagation(); // Stop event bubbling
-                      fileDialogOpenRef.current = true;
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      fileDialogOpenRef.current = true;
-                      documentUploadInputRef.current?.click();
-                    }}
-                    disabled={isUploadingDocument}
-                    className="text-muted-foreground hover:text-foreground disabled:opacity-50"
-                    title="Upload document"
-                  >
-                    {isUploadingDocument ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Upload className="size-4" />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowDocsHint(false);
-                    }}
-                    className="text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-              </div>
-              
-              <div className="overflow-y-auto max-h-[300px]">
-                {isLoadingDocs ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : allDocuments.length === 0 ? (
-                  <div className="text-center py-8 text-sm text-muted-foreground px-4">
-                    No documents available. Upload documents first.
-                  </div>
-                ) : (
-                  <div className="p-2 space-y-1">
-                    {allDocuments.map(doc => {
-                      const isSelected = selectedDocuments.includes(doc.id);
-                      const isCompleted = doc.processing_status === 'completed';
-                      const isProcessing = doc.processing_status === 'processing' || doc.processing_status === 'pending';
-                      const isFailed = doc.processing_status === 'failed';
-                      return (
-                        <button
-                          key={doc.id}
-                          type="button"
-                          onClick={() => isCompleted && toggleDocumentSelection(doc.id)}
-                          disabled={!isCompleted}
-                          className={`w-full flex items-center gap-2 p-2 rounded-md text-left text-sm transition-colors ${
-                            !isCompleted 
-                              ? 'opacity-50 cursor-not-allowed' 
-                              : isSelected 
-                                ? 'bg-primary/10 text-primary' 
-                                : 'hover:bg-accent'
-                          }`}
-                        >
-                          <span className={`inline-flex items-center justify-center size-4 rounded-full border shrink-0 ${
-                            isSelected && isCompleted
-                              ? 'bg-primary border-primary text-primary-foreground' 
-                              : 'border-muted-foreground'
-                          }`}>
-                            {isSelected && isCompleted && <CheckCircle className="size-3" />}
-                          </span>
-                          <FileText className="size-4 shrink-0 text-muted-foreground" />
-                          <span className="truncate flex-1">{doc.original_name}</span>
-                          {isProcessing && (
-                            <span className="text-xs text-muted-foreground shrink-0">Processing...</span>
-                          )}
-                          {isFailed && (
-                            <span className="text-xs text-destructive shrink-0">Failed</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              
-              {selectedDocuments.length > 0 && (
-                <div className="px-3 py-2 border-t text-xs text-muted-foreground">
-                  {selectedDocuments.length} document{selectedDocuments.length !== 1 ? 's' : ''} selected
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
         {/* Bottom Control Bar */}
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 bg-card">
           {/* Left hint below divider */}
           <div className="text-[11px] text-muted-foreground/70 select-none">
-            @ to add context
           </div>
 
           {/* Right side - Multimodal input icons */}
@@ -668,9 +407,6 @@ export function MultimodalInput({
                 <LoaderIcon size={14} />
               </button>
             )}
-            <button className="p-1.5 text-muted-foreground hover:text-foreground">
-              <AtIcon size={14} />
-            </button>
             <button className="p-1.5 text-muted-foreground hover:text-foreground">
               <GlobeIcon size={14} />
             </button>

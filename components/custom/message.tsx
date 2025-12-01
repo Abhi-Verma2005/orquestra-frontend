@@ -15,7 +15,6 @@ import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import TextShimmer from "../forgeui/text-shimmer";
 import CartManagementResults from "../oms/cart-management-results";
 import { OrdersDisplayResults } from "../oms/orders-display-results";
-import StripePaymentComponent from "../oms/stripe-payment-component";
 import { PublishersResults } from "../publishers/publishers-results";
 import { ToolInvocationItem } from "../tools/use-tool-invocation";
 
@@ -40,7 +39,6 @@ const getLoadingText = (loadingTools?: Set<string>): string => {
     clearCart: "Clearing cart...",
     updateCartItemQuantity: "Updating cart...",
     collectPublisherFilters: "Collecting filters...",
-    processPayment: "Processing payment...",
     createExecutionPlan: "Creating plan...",
     updatePlanProgress: "Updating plan...",
   };
@@ -59,6 +57,7 @@ export const Message = ({
   isGenerating = false,
   onAppendMessage,
   loadingTools,
+  name,
 }: {
   chatId: string;
   role: string;
@@ -70,6 +69,7 @@ export const Message = ({
   isGenerating?: boolean;
   onAppendMessage?: (message: { role: 'user'; content: string }) => Promise<string | null | undefined>;
   loadingTools?: Set<string>;
+  name?: string; // User ID or name for group messages
 }) => {
   const { setRightPanelContent, closeRightPanel } = useSplitScreen();
   const { addItem, removeItem, getCartItemIds, state: cartState, clearCart } = useCart();
@@ -106,35 +106,6 @@ export const Message = ({
     setFeedback(prev => prev === 'down' ? null : 'down');
   }, []);
 
-  // Function to trigger AI acknowledgment of payment success
-  const triggerPaymentSuccessMessage = useCallback(async (paymentIntent: any) => {
-    try {
-      // Send a message to the chat API to trigger AI acknowledgment
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: chatId,
-          messages: [
-            {
-              role: 'user',
-              content: `Payment completed successfully! Payment ID: ${paymentIntent.id}, Amount: $${(paymentIntent.amount / 100).toFixed(2)}. Please acknowledge this payment and provide next steps.`
-            }
-          ]
-        }),
-      });
-
-      if (response.ok) {
-        console.log('Payment success message sent to AI');
-      } else {
-        console.error('Failed to send payment success message to AI');
-      }
-    } catch (error) {
-      console.error('Error sending payment success message:', error);
-    }
-  }, [chatId]);
 
   // Function to handle "Done Adding to Cart" button click
   // Function to trigger AI to continue filter collection
@@ -202,43 +173,19 @@ export const Message = ({
   const handleDoneAddingToCart = useCallback(() => {
     if (cartState.items.length === 0) return;
     
-    // Trigger AI to process payment with current cart items
-    const cartItems = cartState.items.map(item => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity
-    }));
-    
-    // Show payment processing component
-    const paymentComponent = (
+    // Show cart summary
+    const cartSummary = (
       <div className="p-4 space-y-4">
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
           <p className="text-green-800 dark:text-green-200 text-sm font-medium">
-            Ready to process payment! I&apos;ll now display the Stripe payment component for you to complete your purchase.
+            Cart is ready! Payment processing has been removed.
           </p>
         </div>
-        <StripePaymentComponent
-          amount={cartState.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) * 1.08}
-          items={cartItems}
-          onPaymentSuccess={(paymentIntent: unknown) => {
-            console.log('Payment successful:', paymentIntent);
-            // Clear the cart after successful payment
-            clearCart();
-            // Trigger AI acknowledgment of successful payment
-            triggerPaymentSuccessMessage(paymentIntent);
-            // Auto-close sidebar after successful payment
-            setTimeout(() => closeRightPanel(), 1000);
-          }}
-          onPaymentError={(error: unknown) => {
-            console.error('Payment error:', error);
-          }}
-        />
       </div>
     );
     
-    setRightPanelContent(paymentComponent);
-  }, [cartState.items, setRightPanelContent, clearCart, triggerPaymentSuccessMessage, closeRightPanel]);
+    setRightPanelContent(cartSummary);
+  }, [cartState.items, setRightPanelContent, clearCart, closeRightPanel]);
 
   // Function to get component and show in right panel
   const showInRightPanel = useCallback((toolName: string, result: any, key?: string) => {
@@ -377,6 +324,20 @@ export const Message = ({
       </div>
 
       <div className="flex flex-col gap-2 w-full">
+        {/* Show user name for user messages in group chats */}
+        {role === "user" && name && (
+          <div className="text-xs text-muted-foreground font-medium mb-1">
+            {name}
+          </div>
+        )}
+        
+        {/* Show system message styling */}
+        {role === "system" && (
+          <div className="text-xs text-muted-foreground italic mb-1">
+            {typeof content === "string" ? content : "System message"}
+          </div>
+        )}
+        
         {/* Show dynamic shimmer when generating but no content yet */}
         {role === "assistant" && isGenerating && (!content || (typeof content === "string" && content.trim() === "")) && (
           <div className="text-foreground">
@@ -386,11 +347,19 @@ export const Message = ({
           </div>
         )}
         
-        {/* Show content when it exists */}
-        {content && typeof content === "string" && content.trim() !== "" && (
-          <div className="text-foreground flex flex-col gap-4 relative">
-            <div className={isGenerating ? 'streaming-content' : ''}>
-              <Markdown>{content}</Markdown>
+        {/* Show content when it exists (skip for system messages, they're shown above) */}
+        {content && typeof content === "string" && content.trim() !== "" && role !== "system" && (
+          <div className={`text-foreground flex flex-col gap-4 relative ${
+            content.trim().startsWith("Error:") ? "error-message" : ""
+          }`}>
+            <div className={`${isGenerating ? 'streaming-content' : ''} ${
+              content.trim().startsWith("Error:") 
+                ? "bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 dark:border-red-500/40 rounded-lg p-3" 
+                : ""
+            }`}>
+              <div className={content.trim().startsWith("Error:") ? "text-red-600 dark:text-red-400" : ""}>
+                <Markdown>{content}</Markdown>
+              </div>
             </div>
             
             {/* Typing cursor - only show during streaming */}
@@ -428,10 +397,6 @@ export const Message = ({
                 additionalProps.onAppendMessage = onAppendMessage;
               }
 
-              // Payment renderer needs showInRightPanel
-              if (toolName === "processPayment") {
-                additionalProps.showInRightPanel = showInRightPanel;
-              }
 
               return (
                 <ToolInvocationItem

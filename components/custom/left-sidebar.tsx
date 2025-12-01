@@ -1,6 +1,7 @@
 "use client";
 
 import * as SheetPrimitive from "@radix-ui/react-dialog";
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { SlashIcon, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
@@ -70,6 +71,13 @@ export function LeftSidebar({ user, onCollapseChange }: LeftSidebarProps) {
               "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left"
             )}
           >
+            {/* Visually hidden title for accessibility */}
+            <VisuallyHidden.Root>
+              <SheetPrimitive.Title>Navigation Sidebar</SheetPrimitive.Title>
+              <SheetPrimitive.Description>
+                Sidebar containing chat history and user settings
+              </SheetPrimitive.Description>
+            </VisuallyHidden.Root>
             {/* Top Section - Logo & App Name (20%) */}
             <div className="shrink-0 p-4 border-b border-border relative" style={{ height: '20%', minHeight: '80px' }}>
               <div className="flex flex-col items-center justify-center h-full space-y-3">

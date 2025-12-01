@@ -13,8 +13,6 @@ import { BrowsePublishersRenderer } from "./renderers/browse-publishers-renderer
 import { CartRenderer } from "./renderers/cart-renderer";
 import { DefaultToolRenderer } from "./renderers/default-tool-renderer";
 import { FiltersRenderer } from "./renderers/filters-renderer";
-import { PaymentRenderer } from "./renderers/payment-renderer";
-import { PlanRenderer } from "./renderers/plan-renderer";
 import { WeatherRenderer } from "./renderers/weather-renderer";
 import { ToolRendererProps } from "./types";
 
@@ -35,9 +33,6 @@ const toolRendererRegistry: Map<string, ToolRendererComponent> = new Map([
   ["clearCart", CartRenderer],
   ["updateCartItemQuantity", CartRenderer],
   ["collectPublisherFilters", FiltersRenderer],
-  ["createExecutionPlan", PlanRenderer],
-  ["updatePlanProgress", PlanRenderer],
-  ["processPayment", PaymentRenderer],
   ["getWeather", WeatherRenderer],
   ["get_weather", WeatherRenderer],
   ["displayOrders", DefaultToolRenderer], // Can be customized later

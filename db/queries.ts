@@ -1,13 +1,11 @@
 import "server-only";
 
 import { genSaltSync, hashSync } from "bcrypt-ts";
-import { desc, eq, and, sql } from "drizzle-orm";
+import { desc, eq, and, sql, or, lt, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { chat, executionPlan, planStep } from "./schema";
-import { users } from "../lib/drizzle-external/schema";
-import { external_db } from "../lib/external-db";
+import { chat, chatMembers, chatInvites, users } from "./schema";
 
 // Native database connection
 let client = postgres(`${process.env.POSTGRES_URL!}?sslmode=require`);
@@ -15,19 +13,19 @@ let db = drizzle(client);
 
 export async function getUser(email: string) {
   try {
-    return await external_db.select().from(users).where(eq(users.email, email));
+    return await db.select().from(users).where(eq(users.email, email));
   } catch (error) {
-    console.error("Failed to get user from external database");
+    console.error("Failed to get user from database");
     throw error;
   }
 }
 
 export async function getUserById(id: string) {
   try {
-    const [user] = await external_db.select().from(users).where(eq(users.id, id));
+    const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   } catch (error) {
-    console.error("Failed to get user by ID from external database");
+    console.error("Failed to get user by ID from database");
     throw error;
   }
 }
@@ -37,18 +35,16 @@ export async function createUser(email: string, password: string) {
     const salt = genSaltSync(10);
     const hash = hashSync(password, salt);
     
-    // Generate a UUID for the user ID (matching the external database schema)
+    // Generate a UUID for the user ID
     const userId = crypto.randomUUID();
     
-    return await external_db.insert(users).values({
+    return await db.insert(users).values({
       id: userId,
       email,
       password: hash,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Failed to create user in external database");
+    console.error("Failed to create user in database");
     throw error;
   }
 }
@@ -152,13 +148,47 @@ export async function deleteChatById({ id }: { id: string }) {
 
 export async function getChatsByUserId({ id }: { id: string }) {
   try {
-    return await db
+    // Get chats where user is owner
+    const ownedChats = await db
       .select()
       .from(chat)
-      .where(eq(chat.userId, id))
-      .orderBy(desc(chat.createdAt));
+      .where(eq(chat.userId, id));
+    
+    // Try to get chats where user is a member (table might not exist if migration hasn't run)
+    let memberChats: Array<{ chat: any }> = [];
+    try {
+      memberChats = await db
+        .select({ chat: chat })
+        .from(chatMembers)
+        .innerJoin(chat, eq(chatMembers.chatId, chat.id))
+        .where(eq(chatMembers.userId, id));
+    } catch (memberError: any) {
+      // If chatMembers table doesn't exist, just return owned chats
+      if (memberError?.message?.includes("does not exist") || memberError?.code === "42P01") {
+        console.warn("chatMembers table not found, returning only owned chats");
+        return ownedChats.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      }
+      throw memberError;
+    }
+    
+    // Combine and deduplicate by chat ID
+    const allChats = [
+      ...ownedChats,
+      ...memberChats.map(m => m.chat)
+    ];
+    
+    // Remove duplicates and sort by createdAt
+    const uniqueChats = Array.from(
+      new Map(allChats.map(c => [c.id, c])).values()
+    ).sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    
+    return uniqueChats;
   } catch (error) {
-    console.error("Failed to get chats by user from database");
+    console.error("Failed to get chats by user from database", error);
     throw error;
   }
 }
@@ -173,125 +203,241 @@ export async function getChatById({ id }: { id: string }) {
   }
 }
 
-// Plan management functions
-export async function createExecutionPlan(data: {
+// Group chat member functions
+export async function getChatMembers(chatId: string) {
+  try {
+    return await db
+      .select()
+      .from(chatMembers)
+      .where(eq(chatMembers.chatId, chatId))
+      .orderBy(chatMembers.joinedAt);
+  } catch (error) {
+    console.error("Failed to get chat members");
+    throw error;
+  }
+}
+
+export async function addChatMember(chatId: string, userId: string, role: "owner" | "member" = "member") {
+  try {
+    // Check if member already exists
+    const existing = await db
+      .select()
+      .from(chatMembers)
+        .where(and(
+        eq(chatMembers.chatId, chatId),
+        eq(chatMembers.userId, userId)
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return existing[0]; // Already a member
+    }
+    
+    const [member] = await db
+      .insert(chatMembers)
+        .values({
+        chatId,
+        userId,
+        role,
+        joinedAt: new Date(),
+        })
+        .returning();
+
+    // Mark chat as group chat if not already
+    await db
+      .update(chat)
+      .set({ isGroupChat: true })
+      .where(eq(chat.id, chatId));
+    
+    return member;
+  } catch (error) {
+    console.error("Failed to add chat member");
+    throw error;
+  }
+}
+
+export async function removeChatMember(chatId: string, userId: string) {
+  try {
+    return await db
+      .delete(chatMembers)
+      .where(and(
+        eq(chatMembers.chatId, chatId),
+        eq(chatMembers.userId, userId)
+      ));
+  } catch (error) {
+    console.error("Failed to remove chat member");
+    throw error;
+  }
+}
+
+export async function isUserInChat(chatId: string, userId: string): Promise<boolean> {
+  try {
+    // Check if user is owner
+    const chatRecord = await db
+      .select()
+      .from(chat)
+      .where(and(
+        eq(chat.id, chatId),
+        eq(chat.userId, userId)
+      ))
+      .limit(1);
+
+    if (chatRecord.length > 0) {
+      return true;
+    }
+    
+    // Check if user is member
+    const member = await db
+      .select()
+      .from(chatMembers)
+      .where(and(
+        eq(chatMembers.chatId, chatId),
+        eq(chatMembers.userId, userId)
+      ))
+      .limit(1);
+
+    return member.length > 0;
+  } catch (error) {
+    console.error("Failed to check if user is in chat");
+    throw error;
+  }
+}
+
+// Invite functions
+export async function createChatInvite({
+  chatId,
+  createdBy,
+  expiresAt,
+  maxUses,
+}: {
   chatId: string;
-  summary: string;
-  steps: Array<{ description: string; toolName: string; stepIndex: number }>;
+  createdBy: string;
+  expiresAt?: Date;
+  maxUses?: number;
 }) {
   try {
-    return await db.transaction(async (tx) => {
-      // Deactivate any existing active plan
-      await tx.update(executionPlan)
-        .set({ status: 'cancelled' })
-        .where(and(
-          eq(executionPlan.chatId, data.chatId),
-          eq(executionPlan.status, 'active')
-        ));
-
-      // Create new plan
-      const [plan] = await tx.insert(executionPlan)
-        .values({
-          chatId: data.chatId,
-          summary: data.summary,
-          totalSteps: data.steps.length,
-          currentStepIndex: 0,
-          status: 'active'
-        })
-        .returning();
-
-      // Create steps
-      const steps = await tx.insert(planStep)
-        .values(data.steps.map(step => ({
-          planId: plan.id,
-          ...step
-        })))
-        .returning();
-
-      return { ...plan, steps };
-    });
+    // Generate unique invite code
+    const inviteCode = crypto.randomUUID().replace(/-/g, '').substring(0, 16);
+    
+    const [invite] = await db
+      .insert(chatInvites)
+      .values({
+        chatId,
+        inviteCode,
+        createdBy,
+        createdAt: new Date(),
+        expiresAt: expiresAt || null,
+        maxUses: maxUses || null,
+        usedCount: 0,
+      })
+      .returning();
+    
+    return invite;
   } catch (error) {
-    console.error("Failed to create execution plan:", error);
+    console.error("Failed to create chat invite");
     throw error;
   }
 }
 
-export async function getActivePlan(chatId: string) {
+export async function getChatInviteByCode(inviteCode: string) {
   try {
-    const plans = await db.select()
-      .from(executionPlan)
-      .leftJoin(planStep, eq(planStep.planId, executionPlan.id))
-      .where(and(
-        eq(executionPlan.chatId, chatId),
-        eq(executionPlan.status, 'active')
-      ))
-      .orderBy(planStep.stepIndex);
+    const [invite] = await db
+      .select()
+      .from(chatInvites)
+      .where(eq(chatInvites.inviteCode, inviteCode))
+      .limit(1);
 
-    if (!plans || plans.length === 0) return null;
-
-    const plan = plans[0].ExecutionPlan;
-    const steps = plans.map(p => p.PlanStep).filter(Boolean);
-
-    return { ...plan, steps };
+    return invite || null;
   } catch (error) {
-    console.error("Failed to get active plan");
+    console.error("Failed to get chat invite by code");
     throw error;
   }
 }
 
-export async function getPlanById(planId: string) {
-  try {
-    const plans = await db.select()
-      .from(executionPlan)
-      .leftJoin(planStep, eq(planStep.planId, executionPlan.id))
-      .where(eq(executionPlan.id, planId))
-      .orderBy(planStep.stepIndex);
-
-    if (!plans || plans.length === 0) return null;
-
-    const plan = plans[0].ExecutionPlan;
-    const steps = plans.map(p => p.PlanStep).filter(Boolean);
-
-    return { ...plan, steps };
-  } catch (error) {
-    console.error("Failed to get plan by ID");
-    throw error;
-  }
-}
-
-export async function updatePlanProgress(planId: string, stepIndex: number, stepResult: any) {
+export async function useInviteCode(inviteCode: string, userId: string) {
   try {
     return await db.transaction(async (tx) => {
-      // Update step status
-      await tx.update(planStep)
-        .set({
-          status: 'completed',
-          result: stepResult,
-          completedAt: new Date()
-        })
-        .where(and(
-          eq(planStep.planId, planId),
-          eq(planStep.stepIndex, stepIndex)
-        ));
-
-      // Update plan current step
-      await tx.update(executionPlan)
-        .set({
-          currentStepIndex: stepIndex + 1,
-          updatedAt: new Date()
-        })
-        .where(eq(executionPlan.id, planId));
-
-      // If all steps complete, mark plan as completed
-      const plan = await tx.select().from(executionPlan).where(eq(executionPlan.id, planId)).limit(1);
-      if (plan[0] && plan[0].currentStepIndex >= plan[0].totalSteps) {
-        await tx.update(executionPlan)
-          .set({ status: 'completed' })
-          .where(eq(executionPlan.id, planId));
+      // Get invite
+      const [invite] = await tx
+        .select()
+        .from(chatInvites)
+        .where(eq(chatInvites.inviteCode, inviteCode))
+        .limit(1);
+      
+      if (!invite) {
+        throw new Error("Invite not found");
       }
+      
+      // Check if expired
+      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+        throw new Error("Invite has expired");
+      }
+      
+      // Check if max uses reached
+      if (invite.maxUses && invite.usedCount >= invite.maxUses) {
+        throw new Error("Invite has reached maximum uses");
+      }
+      
+      // Check if user is already a member (check both owner and member)
+      const chatRecord = await tx
+        .select()
+        .from(chat)
+        .where(and(
+          eq(chat.id, invite.chatId),
+          eq(chat.userId, userId)
+        ))
+        .limit(1);
+      
+      if (chatRecord.length > 0) {
+        throw new Error("User is already a member of this chat");
+      }
+      
+      const existingMember = await tx
+        .select()
+        .from(chatMembers)
+        .where(and(
+          eq(chatMembers.chatId, invite.chatId),
+          eq(chatMembers.userId, userId)
+        ))
+        .limit(1);
+      
+      if (existingMember.length > 0) {
+        throw new Error("User is already a member of this chat");
+      }
+      
+      // Add user to chat members
+      await tx
+        .insert(chatMembers)
+        .values({
+          chatId: invite.chatId,
+          userId,
+          role: "member",
+          joinedAt: new Date(),
+        });
+      
+      // Mark chat as group chat
+      await tx
+        .update(chat)
+        .set({ isGroupChat: true })
+        .where(eq(chat.id, invite.chatId));
+      
+      // Increment used count
+      await tx
+        .update(chatInvites)
+        .set({ usedCount: invite.usedCount + 1 })
+        .where(eq(chatInvites.id, invite.id));
+      
+      // Get chat details
+      const [chatResult] = await tx
+        .select()
+        .from(chat)
+        .where(eq(chat.id, invite.chatId))
+        .limit(1);
+      
+      return chatResult;
     });
   } catch (error) {
-    console.error("Failed to update plan progress");
+    console.error("Failed to use invite code");
     throw error;
   }
 }

@@ -50,7 +50,6 @@ graph LR
     end
     
     subgraph "External Services"
-        J[Stripe] --> I
         K[OpenAI] --> H
     end
     
@@ -130,10 +129,6 @@ database:
   ssl: true
 
 payment:
-  stripe:
-    public_key: pk_live_...
-    webhook_secret: whsec_...
-  
   currency: USD
   tax_rate: 0.08
 

@@ -1,7 +1,7 @@
 import { Message } from "ai";
 
 import { auth } from "../../../../app/(auth)/auth";
-import { saveChat, getChatById } from "../../../../db/queries";
+import { saveChat, getChatById, isUserInChat } from "../../../../db/queries";
 
 
 export async function POST(request: Request) {
@@ -32,9 +32,19 @@ export async function POST(request: Request) {
       return Response.json({ success: true });
     }
 
-    // Verify ownership
-    if (existingChat.userId !== session.user.id) {
-      return new Response("Forbidden", { status: 403 });
+    // Verify access: for group chats, check membership; for regular chats, check ownership
+    const isGroupChat = existingChat.isGroupChat || false;
+    if (isGroupChat) {
+      // For group chats, user must be a member
+      const isMember = await isUserInChat(chatId, session.user.id);
+      if (!isMember) {
+        return new Response("Forbidden - not a member of this chat", { status: 403 });
+      }
+    } else {
+      // For regular chats, user must be the owner
+      if (existingChat.userId !== session.user.id) {
+        return new Response("Forbidden - not the owner of this chat", { status: 403 });
+      }
     }
 
     // Parse existing messages

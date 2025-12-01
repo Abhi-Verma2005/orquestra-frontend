@@ -34,6 +34,9 @@ export enum MessageType {
   Heartbeat = "heartbeat",
   Error = "error",
   StopGeneration = "stop_generation",
+  UserMessage = "user_message",
+  UserJoined = "user_joined",
+  UserLeft = "user_left",
 }
 
 export interface WebSocketMessage {
@@ -48,6 +51,16 @@ export interface JoinRoomMessage {
   user_id?: string;
 }
 
+export interface UserJoinedPayload {
+  user_id: string;
+  chat_id: string;
+}
+
+export interface UserLeftPayload {
+  user_id: string;
+  chat_id: string;
+}
+
 export interface SendMessageData {
   chat_id: string;
   user_id?: string;
@@ -59,7 +72,8 @@ export interface SendMessageData {
       name?: string;
     };
   };
-  selectedDocuments?: string[];
+  is_ai_message?: boolean; // Optional hint from frontend, backend will verify
+  is_group_chat?: boolean; // Tell backend if this is a group chat
 }
 
 export interface ChatMessage {
@@ -106,7 +120,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     }
 
     console.log('🔄 [WebSocket] Connecting to:', WS_URL);
+    console.log('🔄 [WebSocket] Current state before connect:', state);
     setState("connecting");
+    console.log('🔄 [WebSocket] State set to connecting');
 
     try {
       const ws = new WebSocket(WS_URL);
@@ -116,9 +132,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         console.log('🟢 [WebSocket] Connected to chat server:', WS_URL);
         setState("connected");
         reconnectAttemptsRef.current = 0;
+        console.log('✅ [WebSocket] Connection state updated to connected');
 
         // Rejoin current chat if there was one
         if (currentChatIdRef.current && ws.readyState === WebSocket.OPEN) {
+          console.log('🔄 [WebSocket] Rejoining chat:', currentChatIdRef.current);
           const message: WebSocketMessage = {
             type: MessageType.JoinChat,
             payload: { chat_id: currentChatIdRef.current, user_id: currentUserIdRef.current || undefined },
@@ -131,15 +149,44 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onmessage = (event) => {
         try {
-          const message: WebSocketMessage = JSON.parse(event.data);
-          console.log('📨 [WebSocket] Message received:', message.type);
+          const parsed = JSON.parse(event.data);
+          console.log('📨 [WebSocket] Raw message received:', parsed);
+          
+          // Check if it's a RoomMessage format (from backend broadcast)
+          if (parsed.room_id && parsed.payload && !parsed.type) {
+            // Convert RoomMessage to ChatMessage event
+            const chatMessage = parsed.payload as ChatMessage;
+            console.log('📨 [WebSocket] RoomMessage received, converting to ChatMessage event');
+            
+            // Emit as ChatMessage event
+            const eventHandlers = eventHandlersRef.current.get(MessageType.ChatMessage);
+            if (eventHandlers) {
+              eventHandlers.forEach((handler) => {
+                try {
+                  handler({ room_id: parsed.room_id, payload: chatMessage });
+                } catch (error) {
+                  console.error('❌ [WebSocket] Error in ChatMessage handler:', error);
+                }
+              });
+            }
+            return;
+          }
+          
+          // Otherwise, treat as WebSocketMessage
+          if (!parsed.type) {
+            console.warn('⚠️ [WebSocket] Message missing type field:', parsed);
+            return;
+          }
+          
+          const message: WebSocketMessage = parsed;
+          console.log('📨 [WebSocket] WebSocketMessage received:', message.type);
 
           // Notify all message handlers
           messageHandlersRef.current.forEach((handler) => {
             try {
               handler(message);
             } catch (error) {
-              // Silent error handling
+              console.error('❌ [WebSocket] Error in message handler:', error);
             }
           });
 
@@ -150,12 +197,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
               try {
                 handler(message.payload);
               } catch (error) {
-                // Silent error handling
+                console.error('❌ [WebSocket] Error in event handler:', error);
               }
             });
           }
         } catch (error) {
-          // Silent error handling
+          console.error('❌ [WebSocket] Error parsing message:', error, event.data);
         }
       };
 
@@ -205,6 +252,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
   const sendMessage = useCallback((data: SendMessageData) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
+      console.error('❌ [WebSocket] Cannot send message - WebSocket not open. State:', wsRef.current?.readyState);
       return;
     }
 
@@ -215,7 +263,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       message_id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
     };
 
-    wsRef.current.send(JSON.stringify(message));
+    const messageStr = JSON.stringify(message);
+    console.log('📤 [WebSocket] Sending ChatMessage:', messageStr.substring(0, 200));
+    wsRef.current.send(messageStr);
   }, []);
 
   const sendStop = useCallback((chatId: string) => {

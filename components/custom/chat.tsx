@@ -14,6 +14,8 @@ import { useCart } from "../../contexts/cart-context";
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import { useUserInfo } from "../../contexts/UserInfoProvider";
 import { useWebSocket, MessageType, ChatMessage } from "../../contexts/websocket-context";
+import { InviteLinkDialog } from "./invite-link-dialog";
+import { ChatMembers } from "./chat-members";
 
 // Helper functions for localStorage draft keys
 const getPerChatDraftKey = (chatId: string) => `chat_draft_${chatId}`;
@@ -36,7 +38,6 @@ export function Chat({
   const { sendMessage, joinChat, leaveChat, onEvent, state: wsState } = useWebSocket();
   const wsCtx = useWebSocket();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
-  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   
   // Clean up initialMessages: merge empty assistant messages with tool invocations into adjacent messages
   const cleanedInitialMessages = useMemo(() => {
@@ -132,6 +133,9 @@ export function Chat({
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const { isRightPanelOpen } = useSplitScreen();
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
+  const [isGroupChat, setIsGroupChat] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const [chatExists, setChatExists] = useState(false);
 
   // Load draft when chat ID or message count changes
   useEffect(() => {
@@ -178,15 +182,55 @@ export function Chat({
     }
   }, [input, id, messages.length]);
 
-  // Join chat on mount
+  // Load chat info and check if group chat
   useEffect(() => {
-    if (wsState === "connected") {
+    const loadChatInfo = async () => {
+      try {
+        const response = await fetch(`/api/chat/info?id=${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsGroupChat(data.isGroupChat || false);
+          setIsOwner(data.userId === user?.id);
+          setChatExists(true); // Chat exists in database
+        } else {
+          // If API fails (404), chat doesn't exist yet (e.g., home page with random UUID)
+          console.warn("Chat not found, assuming it doesn't exist yet");
+          setIsGroupChat(false);
+          setIsOwner(false);
+          setChatExists(false);
+        }
+      } catch (error) {
+        console.error("Error loading chat info:", error);
+        // On error, assume chat doesn't exist
+        setIsGroupChat(false);
+        setIsOwner(false);
+        setChatExists(false);
+      }
+    };
+    if (id && user) {
+      loadChatInfo();
+    } else {
+      setChatExists(false);
+    }
+  }, [id, user]);
+
+  // Join chat on mount - only if chat exists (not on home page with random UUID)
+  useEffect(() => {
+    // Only join if:
+    // 1. Chat exists (loaded from database) OR
+    // 2. We have messages (chat was created)
+    // This prevents joining on home page where id is just a random UUID
+    const shouldJoin = chatExists || messages.length > 0;
+    
+    if (wsState === "connected" && shouldJoin && id) {
       joinChat(id, user?.id);
     }
     return () => {
-      leaveChat(id);
+      if (shouldJoin && id) {
+        leaveChat(id);
+      }
     };
-  }, [id, wsState, joinChat, leaveChat]);
+  }, [id, wsState, joinChat, leaveChat, user?.id, chatExists, messages.length]);
 
   // If we navigated after creating a new chat, pick up the pending first message and send it
   useEffect(() => {
@@ -198,15 +242,13 @@ export function Chat({
       if (!raw) return;
       const parsed = JSON.parse(raw);
       
-      // Handle both old format (just Message) and new format (with selectedDocuments/cartData)
+      // Handle both old format (just Message) and new format (with cartData)
       let pending: Message;
-      let pendingSelectedDocuments: string[] | undefined;
       let cartData: any;
       
       if (parsed.message) {
-        // New format: { message: Message, selectedDocuments?: string[], cartData?: any }
+        // New format: { message: Message, cartData?: any }
         pending = parsed.message;
-        pendingSelectedDocuments = parsed.selectedDocuments;
         cartData = parsed.cartData;
       } else {
         // Old format: just Message
@@ -227,10 +269,7 @@ export function Chat({
           },
         };
         
-        // Include selectedDocuments and cartData if they exist
-        if (pendingSelectedDocuments && pendingSelectedDocuments.length > 0) {
-          messagePayload.selectedDocuments = pendingSelectedDocuments;
-        }
+        // Include cartData if it exists
         if (cartData) {
           messagePayload.cartData = cartData;
         }
@@ -238,11 +277,6 @@ export function Chat({
         sendMessage(messagePayload);
         setIsLoading(true);
         stopRequestedRef.current = false;
-        
-        // Restore selectedDocuments state so it persists for subsequent messages
-        if (pendingSelectedDocuments && pendingSelectedDocuments.length > 0) {
-          setSelectedDocuments(pendingSelectedDocuments);
-        }
         
         // Align the pending message to top in the viewport
         setTimeout(() => {
@@ -253,7 +287,7 @@ export function Chat({
       // Clear any leftover new-chat draft
       localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
     } catch {}
-  }, [id, wsState, sendMessage, scrollToMessage, user, setSelectedDocuments]);
+  }, [id, wsState, sendMessage, scrollToMessage, user]);
 
   // Handle WebSocket events
   useEffect(() => {
@@ -358,6 +392,220 @@ export function Chat({
         if (userMsg.role === "user") {
           setIsLoading(true);
           // Note: lastUserMessageRef is already set in handleSubmit before sending
+        }
+      }
+    });
+
+    // Handle ChatMessage events (from backend RoomMessage broadcasts)
+    const unsubscribeChatMessage = onEvent(MessageType.ChatMessage, (payload: unknown) => {
+      const data = payload as { room_id: string; payload: ChatMessage };
+      if (data.payload && data.room_id === id) {
+        const chatMsg: ChatMessage = data.payload;
+        console.log("[Chat] ChatMessage received from backend:", chatMsg);
+        
+        // Handle system messages (user joined/left)
+        if (chatMsg.role === "system" && chatMsg.content) {
+          setIsLoading(false);
+          const messageId = `system_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+          
+          // If a user joined, reload chat info to update isGroupChat status
+          if (chatMsg.content.includes("joined the chat") && id && user) {
+            fetch(`/api/chat/info?id=${id}`)
+              .then((response) => {
+                if (response.ok) {
+                  return response.json();
+                }
+              })
+              .then((data) => {
+                if (data) {
+                  setIsGroupChat(data.isGroupChat || false);
+                  setIsOwner(data.userId === user?.id);
+                }
+              })
+              .catch((error) => {
+                console.error("Error reloading chat info after user joined:", error);
+              });
+          }
+          
+          setMessages((prev) => {
+            // Check if this exact content already exists (deduplication)
+            const contentExists = prev.some(
+              (msg) => msg.role === "system" && msg.content === chatMsg.content
+            );
+            
+            if (contentExists) {
+              return prev;
+            }
+            
+            return [
+              ...prev,
+              {
+                id: messageId,
+                role: "system",
+                content: chatMsg.content,
+              },
+            ];
+          });
+          return;
+        }
+        
+        // Handle user messages (group messages)
+        if (chatMsg.role === "user" && chatMsg.content) {
+          setIsLoading(false);
+          const messageId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+          
+          setMessages((prev) => {
+            // Improved deduplication: check if we already have this exact message
+            // Check by content + sender name (user_id) within a time window
+            const isOwnMessage = chatMsg.name === user?.id;
+            const now = Date.now();
+            
+            // Check for duplicates: same content + same sender
+            // For own messages, also check if it was added very recently (within 5 seconds)
+            const contentExists = prev.some((msg) => {
+              if (msg.role !== "user" || msg.content !== chatMsg.content) {
+                return false;
+              }
+              
+              const msgName = (msg as any).name;
+              if (msgName !== chatMsg.name) {
+                return false;
+              }
+              
+              // If content and sender match, it's a duplicate
+              // For own messages, also check recency to avoid false positives
+              if (isOwnMessage) {
+                try {
+                  // Extract timestamp from message ID (format: user_TIMESTAMP_random)
+                  const msgIdParts = msg.id.split('_');
+                  if (msgIdParts.length >= 2) {
+                    const msgTime = parseInt(msgIdParts[1] || '0');
+                    // If message was added in last 5 seconds with same content and sender, it's a duplicate
+                    if (!isNaN(msgTime) && (now - msgTime) < 5000) {
+                      return true;
+                    }
+                  }
+                } catch {
+                  // If parsing fails, still check content + name match
+                }
+              }
+              
+              // For all messages: if content + sender match, it's a duplicate
+              // This prevents the same message from appearing twice
+              return true;
+            });
+            
+            if (contentExists) {
+              console.log("[Chat] Duplicate group message detected, skipping. Sender:", chatMsg.name, "Content:", chatMsg.content.substring(0, 50));
+              return prev;
+            }
+            
+            console.log("[Chat] Adding group message. Sender:", chatMsg.name, "Content:", chatMsg.content.substring(0, 50));
+            return [
+              ...prev,
+              {
+                id: messageId,
+                role: "user",
+                content: chatMsg.content,
+                name: chatMsg.name, // Include sender's user_id
+              } as Message,
+            ];
+          });
+          
+          // Save to database for all group messages (including our own if received via broadcast)
+          if (user) {
+            const userMessage = {
+              id: messageId,
+              role: "user",
+              content: chatMsg.content,
+              name: chatMsg.name,
+            };
+            fetch("/api/chat/message", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chatId: id,
+                message: userMessage,
+              }),
+            })
+              .then((res) => {
+                if (!res.ok) {
+                  console.error("[Chat] Failed to save user message:", res.status, res.statusText);
+                }
+              })
+              .catch((err) => {
+                console.error("[Chat] Failed to save user message:", err);
+              });
+          }
+          return;
+        }
+        
+        // Only handle assistant messages (user messages are already added via handleSubmit)
+        if (chatMsg.role === "assistant" && chatMsg.content) {
+          setIsLoading(false);
+          const messageId = `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+          
+          setMessages((prev) => {
+            // Check if this exact content already exists (deduplication)
+            const contentExists = prev.some(
+              (msg) => msg.role === "assistant" && msg.content === chatMsg.content
+            );
+            
+            if (contentExists) {
+              console.log("[Chat] Duplicate message detected, skipping:", chatMsg.content.substring(0, 50));
+              return prev; // Don't add duplicate
+            }
+            
+            // Check if we should update the last assistant message or create a new one
+            const lastAssistantIndex = prev.length - 1 >= 0 && prev[prev.length - 1].role === "assistant"
+              ? prev.length - 1
+              : -1;
+            
+            if (lastAssistantIndex >= 0 && !prev[lastAssistantIndex].content) {
+              // Update existing empty assistant message
+              const updated = [...prev];
+              updated[lastAssistantIndex] = {
+                ...updated[lastAssistantIndex],
+                content: chatMsg.content,
+              };
+              return updated;
+            } else {
+              // Create new assistant message
+              return [
+                ...prev,
+                {
+                  id: messageId,
+                  role: "assistant",
+                  content: chatMsg.content,
+                },
+              ];
+            }
+          });
+          
+          // Save to database
+          if (user) {
+            const assistantMessage = {
+              id: messageId,
+              role: "assistant",
+              content: chatMsg.content,
+            };
+            fetch("/api/chat/message", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chatId: id,
+                message: assistantMessage,
+              }),
+            })
+              .then((res) => {
+                if (!res.ok) {
+                  console.error("[Chat] Failed to save assistant message:", res.status, res.statusText);
+                }
+              })
+              .catch((err) => {
+                console.error("[Chat] Failed to save assistant message:", err);
+              });
+          }
         }
       }
     });
@@ -855,46 +1103,9 @@ export function Chat({
                 cartData
               }}
               onDoneAddingToCart={() => {
-                // When user clicks checkout, trigger processPayment
-                const cartItems = (cartState.items || []).map(item => ({
-                  id: item.id,
-                  name: item.name,
-                  price: item.price,
-                  quantity: item.quantity
-                }));
-                // This will be handled by the AI calling processPayment
+                // Cart management complete
               }}
             />
-          );
-          // setRightPanelContent automatically opens the panel
-        });
-      } else if (data.action === 'checkout') {
-        // Show payment component
-        import('../oms/stripe-payment-component').then(({ default: StripePaymentComponent }) => {
-          const items = cartState.items || [];
-          const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-          const stripeItems = items.map(item => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity
-          }));
-          
-          setRightPanelContent(
-            <div className="p-4">
-              <StripePaymentComponent
-                amount={totalAmount * 1.08} // Include tax
-                items={stripeItems}
-                onPaymentSuccess={(paymentIntent) => {
-                  console.log('Payment successful:', paymentIntent);
-                  // Clear cart after successful payment
-                  // Trigger AI acknowledgment
-                }}
-                onPaymentError={(error) => {
-                  console.error('Payment error:', error);
-                }}
-              />
-            </div>
           );
           // setRightPanelContent automatically opens the panel
         });
@@ -948,6 +1159,18 @@ export function Chat({
       unsubscribeCartUpdated();
       unsubscribeError();
     };
+    return () => {
+      unsubscribeTextStream();
+      unsubscribeTextStreamEnd();
+      unsubscribeMessageReceived();
+      unsubscribeChatMessage();
+      unsubscribeFunctionCallStart();
+      unsubscribeFunctionCallEnd();
+      unsubscribeFunctionCall();
+      unsubscribeFunctionResult();
+      unsubscribePublishersData();
+      unsubscribeCartData();
+    };
   }, [onEvent, streamingContent, id, user, cartState.items, addItemToCart, setRightPanelContent, setMessages, setLoadingTools]);
 
   // Update messages when streaming content changes
@@ -991,9 +1214,35 @@ export function Chat({
       return;
     }
 
+    // Check if message starts with "@ai" (case-insensitive)
+    const trimmedInput = input.trim();
+    const hasAiPrefix = trimmedInput.toLowerCase().startsWith("@ai");
+    
+    // Reload chat info to ensure we have the latest isGroupChat status
+    // This is important because the chat might have become a group chat after someone joined
+    let currentIsGroupChat = isGroupChat;
+    if (id && user && !hasAiPrefix) {
+      try {
+        const response = await fetch(`/api/chat/info?id=${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          currentIsGroupChat = data.isGroupChat || false;
+          setIsGroupChat(currentIsGroupChat);
+          setIsOwner(data.userId === user?.id);
+        }
+      } catch (error) {
+        console.error("Error reloading chat info before sending message:", error);
+      }
+    }
+    
+    // Message routing logic:
+    // - If NOT group chat: all messages go to AI (existing behavior)
+    // - If IS group chat: check for "@ai" prefix
+    const isAiMessage = !currentIsGroupChat || hasAiPrefix;
+    
     const userMessage: ChatMessage = {
       role: "user",
-      content: input.trim(),
+      content: trimmedInput,
     };
 
     // Add user message to state
@@ -1023,6 +1272,9 @@ export function Chat({
         const newId = data?.id as string;
         if (!newId) { setIsCreatingChat(false); return; }
 
+        // Chat was created, mark it as existing
+        setChatExists(true);
+
         // Prepare cart data and selected documents to store with pending message
         const items = cartState.items || [];
         const cartDataForBackend = items.length > 0 ? {
@@ -1040,10 +1292,9 @@ export function Chat({
         } : undefined;
 
         try {
-          // Store pending message with selectedDocuments and cartData
+          // Store pending message with cartData
           const pendingData = {
             message: userMsg,
-            selectedDocuments: selectedDocuments.length > 0 ? selectedDocuments : undefined,
             cartData: cartDataForBackend
           };
           sessionStorage.setItem(`pending_first_message_${newId}`, JSON.stringify(pendingData));
@@ -1062,18 +1313,39 @@ export function Chat({
     }
 
     // Existing chat: proceed normally
-    setMessages((prev) => [...prev, userMsg]);
-    // Scroll so the just-sent user message is positioned at the top of the scroll container
-    setTimeout(() => {
-      scrollToMessage(`msg-${userMsgId}`);
-    }, 0);
+    // For group chats, don't add message locally - wait for broadcast to ensure consistent ordering
+    // For non-group chats, add immediately (existing behavior)
+    if (!isGroupChat) {
+      setMessages((prev) => [...prev, userMsg]);
+      // Scroll so the just-sent user message is positioned at the top of the scroll container
+      setTimeout(() => {
+        scrollToMessage(`msg-${userMsgId}`);
+      }, 0);
+    } else {
+      // For group chats: add message locally immediately for instant feedback
+      // When broadcast comes back, deduplication will prevent duplicate
+      // Use a consistent message structure with sender info
+      const groupUserMsg: Message = {
+        ...userMsg,
+        name: user?.id, // Include sender's user_id for group messages
+      };
+      setMessages((prev) => [...prev, groupUserMsg]);
+      setTimeout(() => {
+        scrollToMessage(`msg-${userMsgId}`);
+      }, 0);
+      
+      // Store a reference to this message so we can update it if needed when broadcast arrives
+      // This helps with consistent ordering
+      lastUserMessageRef.current = userMsgId;
+    }
+    
     if (user) {
       fetch("/api/chat/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chatId: id,
-          message: userMsg,
+          message: isGroupChat ? { ...userMsg, name: user.id } : userMsg,
         }),
       })
         .then((res) => {
@@ -1112,8 +1384,9 @@ export function Chat({
           ...(cartDataForBackend && { cartData: cartDataForBackend })
         },
       },
-      ...(cartDataForBackend && { cartData: cartDataForBackend }),
-      ...(selectedDocuments.length > 0 && { selectedDocuments })
+      is_ai_message: isAiMessage, // true if: not group chat OR has "@ai" prefix
+      is_group_chat: currentIsGroupChat, // Tell backend if this is a group chat (use latest value)
+      ...(cartDataForBackend && { cartData: cartDataForBackend })
     });
 
     setInput("");
@@ -1125,7 +1398,7 @@ export function Chat({
         localStorage.removeItem(getPerChatDraftKey(id));
       } catch {}
     }
-  }, [input, isLoading, wsState, id, sendMessage, scrollToMessage, user, messages.length, router, cartState.items, selectedDocuments]);
+  }, [input, isLoading, wsState, id, sendMessage, scrollToMessage, user, messages.length, router, cartState.items]);
 
   // Stop generation
   const stop = useCallback(() => {
@@ -1213,6 +1486,23 @@ export function Chat({
                 messages.length === 0 ? 'justify-center items-center' : 'justify-between'
               }`}
             >
+              {/* Invite button - show in existing chats (when id exists), not on home page */}
+              {id && (
+                <div className="absolute top-16 right-4 z-20 flex items-center gap-2">
+                  <InviteLinkDialog chatId={id} />
+                  {/* Show members list only if it's a group chat */}
+                  {isGroupChat && user && (
+                    <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-2">
+                      <ChatMembers 
+                        chatId={id} 
+                        currentUserId={user.id}
+                        isOwner={isOwner}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {messages.length > 0 && (
                 <div
                   ref={messagesContainerRef}
@@ -1231,6 +1521,7 @@ export function Chat({
                         isGenerating={isLoading && index === messages.length - 1 && message.role === "assistant"}
                         onAppendMessage={append}
                         loadingTools={loadingTools}
+                        name={(message as any).name} // Pass user name for group messages
                       />
                     </div>
                   ))}
@@ -1267,8 +1558,6 @@ export function Chat({
                   setAttachments={setAttachments}
                   messages={messages}
                   append={append}
-                  selectedDocuments={selectedDocuments}
-                  setSelectedDocuments={setSelectedDocuments}
                 />
               </form>
             </div>

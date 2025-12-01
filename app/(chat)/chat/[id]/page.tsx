@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
 import { Chat as PreviewChat } from "@/components/custom/chat";
-import { getChatById } from "@/db/queries";
+import { getChatById, isUserInChat } from "@/db/queries";
 import { Chat } from "@/db/schema";
 import { convertToUIMessages } from "@/lib/utils";
 
@@ -45,7 +45,9 @@ export default async function Page({ params }: { params: any }) {
     return notFound();
   }
 
-  if (session.user.id !== chat.userId) {
+  // Check if user is owner OR member
+  const hasAccess = await isUserInChat(chat.id, session.user.id);
+  if (!hasAccess) {
     return notFound();
   }
 
