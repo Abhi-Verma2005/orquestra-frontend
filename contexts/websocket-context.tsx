@@ -128,7 +128,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(() => {
     const currentReadyState = wsRef.current?.readyState;
     const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
-    
+
     if (currentReadyState === WebSocket.OPEN) {
       console.log('🔄 [WebSocket] Already connected, skipping. ReadyState:', readyStateNames[currentReadyState]);
       return;
@@ -142,7 +142,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     console.log('🔄 [WebSocket] ===== CONNECTION ATTEMPT START =====');
     console.log('🔄 [WebSocket] URL:', WS_URL);
     console.log('🔄 [WebSocket] Timestamp:', new Date().toISOString());
-    console.log('🔄 [WebSocket] Current state:', state);
     console.log('🔄 [WebSocket] Reconnect attempt:', reconnectAttemptsRef.current, '/', MAX_RECONNECT_ATTEMPTS);
     console.log('🔄 [WebSocket] Protocol:', WS_URL.startsWith('wss://') ? 'WSS (secure)' : 'WS (insecure)');
     
@@ -351,7 +350,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       
       setState("error");
     }
-  }, [state]);
+  }, []);
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;
