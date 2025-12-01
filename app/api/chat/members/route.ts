@@ -1,3 +1,5 @@
+import { NextRequest, NextResponse } from "next/server";
+
 import { auth } from "@/app/(auth)/auth";
 import {
   getChatMembers,
@@ -5,13 +7,12 @@ import {
   getChatById,
   isUserInChat,
 } from "@/db/queries";
-import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/chat/members?chatId=xxx - Get all members of a chat
 export async function GET(request: NextRequest) {
   const session = await auth();
 
-  if (!session || !session.user) {
+  if (!session || !session.user || !session.user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const session = await auth();
 
-  if (!session || !session.user) {
+  if (!session || !session.user || !session.user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -354,7 +354,7 @@ export async function getChatInviteByCode(inviteCode: string) {
   }
 }
 
-export async function useInviteCode(inviteCode: string, userId: string) {
+export async function redeemInviteCode(inviteCode: string, userId: string) {
   try {
     return await db.transaction(async (tx) => {
       // Get invite

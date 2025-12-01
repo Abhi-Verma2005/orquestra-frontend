@@ -1,6 +1,7 @@
-import { auth } from "@/app/(auth)/auth";
-import { useInviteCode } from "@/db/queries";
 import { NextRequest, NextResponse } from "next/server";
+
+import { auth } from "@/app/(auth)/auth";
+import { redeemInviteCode } from "@/db/queries";
 
 // POST /api/chat/invite/[code]/join - Join chat via invite code
 export async function POST(
@@ -9,7 +10,7 @@ export async function POST(
 ) {
   const session = await auth();
 
-  if (!session || !session.user) {
+  if (!session || !session.user || !session.user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -21,7 +22,7 @@ export async function POST(
     }
 
     // Use invite code to join chat
-    const chat = await useInviteCode(code, session.user.id);
+    const chat = await redeemInviteCode(code, session.user.id);
 
     return NextResponse.json({
       chatId: chat.id,

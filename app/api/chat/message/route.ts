@@ -7,7 +7,7 @@ import { saveChat, getChatById, isUserInChat } from "../../../../db/queries";
 export async function POST(request: Request) {
   const session = await auth();
 
-  if (!session || !session.user) {
+  if (!session || !session.user || !session.user.id) {
     return new Response("Unauthorized", { status: 401 });
   }
 
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       await saveChat({
         id: chatId,
         messages: [message],
-        userId: session.user.id || "",
+        userId: session.user.id,
       });
       return Response.json({ success: true });
     }
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       }
     } else {
       // For regular chats, user must be the owner
-      if (existingChat.userId !== session.user.id) {
+    if (existingChat.userId !== session.user.id) {
         return new Response("Forbidden - not the owner of this chat", { status: 403 });
       }
     }

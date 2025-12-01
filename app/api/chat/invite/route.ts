@@ -1,12 +1,13 @@
+import { NextRequest, NextResponse } from "next/server";
+
 import { auth } from "@/app/(auth)/auth";
 import { createChatInvite, getChatById, isUserInChat } from "@/db/queries";
-import { NextRequest, NextResponse } from "next/server";
 
 // POST /api/chat/invite - Generate invite link for a chat
 export async function POST(request: NextRequest) {
   const session = await auth();
 
-  if (!session || !session.user) {
+  if (!session || !session.user || !session.user.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

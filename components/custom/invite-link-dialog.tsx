@@ -1,6 +1,8 @@
 "use client";
 
+import { Copy, Check, Users } from "lucide-react";
 import { useState } from "react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,7 +16,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Copy, Check, Users } from "lucide-react";
 
 interface InviteLinkDialogProps {
   chatId: string;

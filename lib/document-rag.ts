@@ -1,5 +1,4 @@
-import { documentChunking, type DocumentChunk } from './document-chunking'
-import type { CSVMetadata, XLSXMetadata, DOCXMetadata, PDFMetadata } from './file-processor'
+import { documentChunking, type DocumentChunk } from './document-chunking';
 
 // Namespace function matching mosaic-next
 function getNamespace(type: 'publishers' | 'documents', userId?: string): string {
@@ -17,10 +16,6 @@ export interface DocumentRAGMetadata {
   filename: string
   type: string
   size: number
-  csvMetadata?: CSVMetadata
-  xlsxMetadata?: XLSXMetadata
-  docxMetadata?: DOCXMetadata
-  pdfMetadata?: PDFMetadata
 }
 
 export interface DocumentRAGResult {
@@ -73,11 +68,7 @@ export class DocumentRAGService {
         metadata.filename,
         userId,
         1000, // chunkSize
-        200,  // overlap
-        metadata.csvMetadata,
-        metadata.xlsxMetadata,
-        metadata.docxMetadata,
-        metadata.pdfMetadata
+        200  // overlap
       )
 
       if (chunks.length === 0) {
@@ -100,11 +91,7 @@ export class DocumentRAGService {
           text: chunk.text, // Store full text in Pinecone metadata
           timestamp: new Date().toISOString(),
           fileType: metadata.type,
-          fileSize: metadata.size,
-          isCSV: !!metadata.csvMetadata,
-          isXLSX: !!metadata.xlsxMetadata,
-          isDOCX: !!metadata.docxMetadata,
-          isPDF: !!metadata.pdfMetadata
+          fileSize: metadata.size
         }
       }))
 

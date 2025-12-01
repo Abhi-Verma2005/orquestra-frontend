@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
+import { ChatMembers } from "./chat-members";
+import { InviteLinkDialog } from "./invite-link-dialog";
 import { LeftSidebar } from "./left-sidebar";
 import { Message as PreviewMessage } from "./message";
 import { MultimodalInput } from "./multimodal-input";
@@ -14,8 +16,6 @@ import { useCart } from "../../contexts/cart-context";
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import { useUserInfo } from "../../contexts/UserInfoProvider";
 import { useWebSocket, MessageType, ChatMessage } from "../../contexts/websocket-context";
-import { InviteLinkDialog } from "./invite-link-dialog";
-import { ChatMembers } from "./chat-members";
 
 // Helper functions for localStorage draft keys
 const getPerChatDraftKey = (chatId: string) => `chat_draft_${chatId}`;
@@ -227,7 +227,7 @@ export function Chat({
     }
     return () => {
       if (shouldJoin && id) {
-        leaveChat(id);
+      leaveChat(id);
       }
     };
   }, [id, wsState, joinChat, leaveChat, user?.id, chatExists, messages.length]);
@@ -1239,7 +1239,7 @@ export function Chat({
     // - If NOT group chat: all messages go to AI (existing behavior)
     // - If IS group chat: check for "@ai" prefix
     const isAiMessage = !currentIsGroupChat || hasAiPrefix;
-    
+
     const userMessage: ChatMessage = {
       role: "user",
       content: trimmedInput,
@@ -1316,11 +1316,11 @@ export function Chat({
     // For group chats, don't add message locally - wait for broadcast to ensure consistent ordering
     // For non-group chats, add immediately (existing behavior)
     if (!isGroupChat) {
-      setMessages((prev) => [...prev, userMsg]);
-      // Scroll so the just-sent user message is positioned at the top of the scroll container
-      setTimeout(() => {
-        scrollToMessage(`msg-${userMsgId}`);
-      }, 0);
+    setMessages((prev) => [...prev, userMsg]);
+    // Scroll so the just-sent user message is positioned at the top of the scroll container
+    setTimeout(() => {
+      scrollToMessage(`msg-${userMsgId}`);
+    }, 0);
     } else {
       // For group chats: add message locally immediately for instant feedback
       // When broadcast comes back, deduplication will prevent duplicate

@@ -1,5 +1,6 @@
-import { getChatInviteByCode } from "@/db/queries";
 import { NextRequest, NextResponse } from "next/server";
+
+import { getChatInviteByCode } from "@/db/queries";
 
 // GET /api/chat/invite/[code] - Get invite details (public, no auth)
 export async function GET(
