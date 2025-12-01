@@ -37,9 +37,18 @@ export async function POST(request: NextRequest) {
       maxUses: maxUses ? parseInt(maxUses) : undefined,
     });
 
-    // Generate invite URL
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-    const inviteUrl = `${baseUrl}/chat/join?invite=${invite.inviteCode}`;
+    // Generate invite URL based on environment or request origin
+    // Priority:
+    // 1. NEXT_PUBLIC_APP_URL (recommended, e.g. https://your-frontend.com)
+    // 2. NEXT_PUBLIC_BASE_URL (fallback for backwards compatibility)
+    // 3. Request origin (works for local dev and most deployments)
+    const requestUrl = new URL(request.url);
+    const origin =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_BASE_URL ||
+      `${requestUrl.protocol}//${requestUrl.host}`;
+
+    const inviteUrl = `${origin}/chat/join?invite=${invite.inviteCode}`;
 
     return NextResponse.json({
       inviteCode: invite.inviteCode,
