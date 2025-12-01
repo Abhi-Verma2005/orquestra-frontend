@@ -388,8 +388,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     const messageStr = JSON.stringify(message);
     console.log('📤 [WebSocket] Sending ChatMessage:', messageStr.substring(0, 200));
-    wsRef.current.send(messageStr);
-  }, []);
+    // At this point we already know readyState === OPEN, but add a final defensive check for TypeScript
+    if (wsRef.current) {
+      wsRef.current.send(messageStr);
+    } else {
+      console.error('❌ [WebSocket] Tried to send message but wsRef.current was null after readyState check');
+    }
+  }, [state]);
 
   const sendStop = useCallback((chatId: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) return;
