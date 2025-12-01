@@ -13,11 +13,11 @@ export const metadata: Metadata = {
     template: "%s | OMS Chat",
   },
   description:
-    "Chat with an AI assistant to discover publishers, set backlink filters, and checkout securely.",
+    "Chat with an AI assistant and collaborate with others in group conversations.",
   openGraph: {
     title: "OMS Chat Assistant",
     description:
-      "AI assistant for publisher discovery and backlink orders. Plan, filter, and pay.",
+      "AI-powered chat application with group conversation features. Chat with AI and collaborate with others.",
     url: "https://oms-chat.vercel.app",
     siteName: "OMS Chat",
     type: "website",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "OMS Chat Assistant",
     description:
-      "Discover publishers, apply SEO filters, and complete payments with AI.",
+      "AI-powered chat application with group conversation features.",
   },
   alternates: {
     canonical: "https://oms-chat.vercel.app/",

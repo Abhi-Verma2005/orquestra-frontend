@@ -30,11 +30,11 @@ export async function GET(request: Request) {
         greeting: z.string(),
         subtitle: z.string()
       }),
-      prompt: `You are crafting a compact hero heading for an SEO/backlink chat app. 
+      prompt: `You are crafting a compact hero heading for a chat application. 
 Return two fields:
 - greeting: a creative, brand-friendly THREE-WORD title (Title Case, no punctuation/emojis) tuned for time bucket ${timeBucket}.
-- subtitle: a concise 6-10 word supporting line that complements the title and sets context: discovery, filters, cart, secure checkout.
-Keep both relevant to backlinks and productivity.`,
+- subtitle: a concise 6-10 word supporting line that complements the title and sets context for a modern chat experience.
+Keep both friendly and welcoming.`,
       temperature: 0.7,
     });
 
@@ -45,21 +45,21 @@ Keep both relevant to backlinks and productivity.`,
     if (greeting.split(/\s+/).length !== 3) {
       greeting =
         timeBucket === "morning"
-          ? "Morning Rank Momentum"
+          ? "Good Morning Chat"
           : timeBucket === "afternoon"
-          ? "Afternoon Link Lift"
+          ? "Afternoon Conversations"
           : timeBucket === "evening"
-          ? "Evening Growth Focus"
-          : "Night Strategy Flow";
+          ? "Evening Chat Time"
+          : "Night Chat Session";
     }
     if (!subtitle || subtitle.length < 6) {
-      subtitle = "Plan filters, browse publishers, pay securely";
+      subtitle = "Start a conversation and connect with others";
     }
 
     return NextResponse.json({ greeting, subtitle });
   } catch (error) {
     return NextResponse.json(
-      { greeting: "Backlink Scout Start", subtitle: "Plan filters, browse publishers, pay securely" },
+      { greeting: "Welcome To Chat", subtitle: "Start a conversation and connect with others" },
       { status: 200 }
     );
   }

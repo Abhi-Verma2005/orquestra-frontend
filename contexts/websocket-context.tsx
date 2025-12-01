@@ -96,11 +96,23 @@ interface WebSocketContextType {
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
 
+// Helper for readyState names (used in logging)
+const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+
 // WebSocket URL for chat WebSocket server (port 8080, root path)
 // Format: ws://host:port/ or wss://host:port/ for production
 const WS_URL = process.env.NEXT_PUBLIC_CHAT_WS_URL || "ws://localhost:8080/";
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
+
+// Log WebSocket configuration on module load
+console.log('🔧 [WebSocket] Configuration:', {
+  WS_URL,
+  hasEnvVar: !!process.env.NEXT_PUBLIC_CHAT_WS_URL,
+  envVarValue: process.env.NEXT_PUBLIC_CHAT_WS_URL || 'not set',
+  protocol: WS_URL.startsWith('wss://') ? 'WSS (secure)' : WS_URL.startsWith('ws://') ? 'WS (insecure)' : 'UNKNOWN',
+  isLocalhost: WS_URL.includes('localhost') || WS_URL.includes('127.0.0.1'),
+});
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WebSocketState>("disconnected");
@@ -114,22 +126,47 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const shouldReconnectRef = useRef(true);
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      console.log('🔄 [WebSocket] Already connected, skipping');
+    const currentReadyState = wsRef.current?.readyState;
+    const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+    
+    if (currentReadyState === WebSocket.OPEN) {
+      console.log('🔄 [WebSocket] Already connected, skipping. ReadyState:', readyStateNames[currentReadyState]);
       return;
     }
 
-    console.log('🔄 [WebSocket] Connecting to:', WS_URL);
-    console.log('🔄 [WebSocket] Current state before connect:', state);
+    if (currentReadyState !== undefined) {
+      console.log('🔄 [WebSocket] Previous connection state:', readyStateNames[currentReadyState]);
+    }
+
+    const connectionStartTime = Date.now();
+    console.log('🔄 [WebSocket] ===== CONNECTION ATTEMPT START =====');
+    console.log('🔄 [WebSocket] URL:', WS_URL);
+    console.log('🔄 [WebSocket] Timestamp:', new Date().toISOString());
+    console.log('🔄 [WebSocket] Current state:', state);
+    console.log('🔄 [WebSocket] Reconnect attempt:', reconnectAttemptsRef.current, '/', MAX_RECONNECT_ATTEMPTS);
+    console.log('🔄 [WebSocket] Protocol:', WS_URL.startsWith('wss://') ? 'WSS (secure)' : 'WS (insecure)');
+    
     setState("connecting");
     console.log('🔄 [WebSocket] State set to connecting');
 
     try {
+      console.log('🔄 [WebSocket] Creating WebSocket instance...');
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
+      
+      console.log('🔄 [WebSocket] WebSocket instance created. Initial readyState:', readyStateNames[ws.readyState]);
 
-      ws.onopen = () => {
-        console.log('🟢 [WebSocket] Connected to chat server:', WS_URL);
+      ws.onopen = (event) => {
+        const connectionTime = Date.now() - connectionStartTime;
+        console.log('🟢 [WebSocket] ===== CONNECTION SUCCESS =====');
+        console.log('🟢 [WebSocket] Connected to:', WS_URL);
+        console.log('🟢 [WebSocket] Connection time:', connectionTime, 'ms');
+        console.log('🟢 [WebSocket] ReadyState:', readyStateNames[ws.readyState]);
+        console.log('🟢 [WebSocket] Event details:', {
+          type: event.type,
+          target: event.target?.constructor?.name,
+        });
+        
         setState("connected");
         reconnectAttemptsRef.current = 0;
         console.log('✅ [WebSocket] Connection state updated to connected');
@@ -207,16 +244,79 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       };
 
       ws.onerror = (error) => {
-        console.error('❌ [WebSocket] Connection error:', error);
+        const connectionTime = Date.now() - connectionStartTime;
+        console.error('❌ [WebSocket] ===== CONNECTION ERROR =====');
+        console.error('❌ [WebSocket] Error event:', error);
+        console.error('❌ [WebSocket] Error type:', error.type);
+        console.error('❌ [WebSocket] Error target:', error.target);
+        console.error('❌ [WebSocket] URL attempted:', WS_URL);
+        console.error('❌ [WebSocket] ReadyState at error:', readyStateNames[ws.readyState]);
+        console.error('❌ [WebSocket] Connection attempt duration:', connectionTime, 'ms');
+        console.error('❌ [WebSocket] Reconnect attempt:', reconnectAttemptsRef.current);
+        
+        // Try to get more error details from the WebSocket
+        if (ws.readyState === WebSocket.CLOSED) {
+          console.error('❌ [WebSocket] WebSocket is CLOSED');
+        } else if (ws.readyState === WebSocket.CONNECTING) {
+          console.error('❌ [WebSocket] WebSocket is still CONNECTING - error occurred during handshake');
+        }
+        
+        // Check for common error scenarios
+        if (WS_URL.startsWith('ws://') && window.location.protocol === 'https:') {
+          console.error('⚠️ [WebSocket] SECURITY ISSUE: Trying to use ws:// (insecure) on https:// page. Use wss:// instead!');
+        }
+        
+        if (!WS_URL.includes('://')) {
+          console.error('⚠️ [WebSocket] INVALID URL: Missing protocol (ws:// or wss://)');
+        }
+        
         setState("error");
       };
 
       ws.onclose = (event) => {
-        console.log('🔴 [WebSocket] Connection closed:', {
-          code: event.code,
-          reason: event.reason,
-          wasClean: event.wasClean
-        });
+        const connectionTime = Date.now() - connectionStartTime;
+        console.log('🔴 [WebSocket] ===== CONNECTION CLOSED =====');
+        console.log('🔴 [WebSocket] Close code:', event.code);
+        console.log('🔴 [WebSocket] Close reason:', event.reason || '(no reason provided)');
+        console.log('🔴 [WebSocket] Was clean:', event.wasClean);
+        console.log('🔴 [WebSocket] URL:', WS_URL);
+        console.log('🔴 [WebSocket] Connection duration:', connectionTime, 'ms');
+        console.log('🔴 [WebSocket] Reconnect attempt:', reconnectAttemptsRef.current);
+        
+        // Decode close codes
+        const closeCodeMeanings: Record<number, string> = {
+          1000: 'Normal Closure',
+          1001: 'Going Away',
+          1002: 'Protocol Error',
+          1003: 'Unsupported Data',
+          1006: 'Abnormal Closure (no close frame received)',
+          1007: 'Invalid Frame Payload Data',
+          1008: 'Policy Violation',
+          1009: 'Message Too Big',
+          1010: 'Mandatory Extension',
+          1011: 'Internal Server Error',
+          1012: 'Service Restart',
+          1013: 'Try Again Later',
+          1014: 'Bad Gateway',
+          1015: 'TLS Handshake Failed',
+        };
+        
+        const codeMeaning = closeCodeMeanings[event.code] || 'Unknown code';
+        console.log('🔴 [WebSocket] Close code meaning:', codeMeaning);
+        
+        if (event.code === 1006) {
+          console.error('⚠️ [WebSocket] Abnormal closure (1006) - This usually means:');
+          console.error('   - Network connection was lost');
+          console.error('   - Server closed connection unexpectedly');
+          console.error('   - Firewall/proxy blocking the connection');
+          console.error('   - SSL/TLS handshake failed (if using wss://)');
+          console.error('   - Server not running or unreachable');
+        }
+        
+        if (!event.wasClean) {
+          console.error('⚠️ [WebSocket] Connection was NOT cleanly closed - indicates an error');
+        }
+        
         setState("disconnected");
         wsRef.current = null;
 
@@ -224,18 +324,34 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (shouldReconnectRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttemptsRef.current++;
           const delay = RECONNECT_DELAY * reconnectAttemptsRef.current;
+          console.log(`🔄 [WebSocket] Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${delay}ms`);
           
           reconnectTimeoutRef.current = setTimeout(() => {
+            console.log(`🔄 [WebSocket] Executing reconnect attempt ${reconnectAttemptsRef.current}`);
             connect();
           }, delay);
         } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+          console.error('❌ [WebSocket] Max reconnect attempts reached. Stopping reconnection.');
+          console.error('❌ [WebSocket] Final state: error');
           setState("error");
         }
       };
     } catch (error) {
+      const connectionTime = Date.now() - connectionStartTime;
+      console.error('❌ [WebSocket] ===== EXCEPTION DURING CONNECTION =====');
+      console.error('❌ [WebSocket] Exception:', error);
+      console.error('❌ [WebSocket] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('❌ [WebSocket] Error message:', error instanceof Error ? error.message : String(error));
+      console.error('❌ [WebSocket] URL attempted:', WS_URL);
+      console.error('❌ [WebSocket] Connection attempt duration:', connectionTime, 'ms');
+      
+      if (error instanceof Error && error.stack) {
+        console.error('❌ [WebSocket] Stack trace:', error.stack);
+      }
+      
       setState("error");
     }
-  }, []);
+  }, [state]);
 
   const disconnect = useCallback(() => {
     shouldReconnectRef.current = false;
@@ -251,8 +367,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const sendMessage = useCallback((data: SendMessageData) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) {
-      console.error('❌ [WebSocket] Cannot send message - WebSocket not open. State:', wsRef.current?.readyState);
+    const readyState = wsRef.current?.readyState;
+    const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+    
+    if (readyState !== WebSocket.OPEN) {
+      console.error('❌ [WebSocket] Cannot send message - WebSocket not open');
+      console.error('❌ [WebSocket] Current readyState:', readyState !== undefined ? readyStateNames[readyState] : 'undefined');
+      console.error('❌ [WebSocket] Connection state:', state);
+      console.error('❌ [WebSocket] WebSocket instance exists:', !!wsRef.current);
+      console.error('❌ [WebSocket] Message data:', JSON.stringify(data).substring(0, 100));
       return;
     }
 
@@ -339,11 +462,20 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
   // Connect on mount
   useEffect(() => {
+    console.log('🔄 [WebSocket] useEffect triggered - connecting...');
+    console.log('🔄 [WebSocket] Component mounted, initializing connection');
     connect();
     return () => {
+      console.log('🔄 [WebSocket] Component unmounting, disconnecting...');
       disconnect();
     };
   }, [connect, disconnect]);
+  
+  // Log state changes
+  useEffect(() => {
+    console.log('🔄 [WebSocket] State changed to:', state);
+    console.log('🔄 [WebSocket] Current readyState:', wsRef.current ? readyStateNames[wsRef.current.readyState] : 'no WebSocket instance');
+  }, [state]);
 
   const value: WebSocketContextType = {
     state,

@@ -14,7 +14,7 @@ export default async function Page() {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description:
-      "AI assistant to discover publishers for backlinks, apply filters, and checkout.",
+      "AI-powered chat assistant for conversations and collaboration.",
   };
 
   return (
