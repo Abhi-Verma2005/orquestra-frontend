@@ -23,24 +23,24 @@ import { Textarea } from "../ui/textarea";
 
 const suggestedActions = [
   {
-    title: "Get Publishers",
-    label: "No filters — just show data",
-    action: "Get publishers data without any filters",
+    title: "What can you help me with?",
+    label: "Discover capabilities and features",
+    action: "What can you help me with? What are your capabilities?",
   },
   {
-    title: "What is backlinking?",
-    label: "Explain benefits in simple terms",
-    action: "Explain backlinking in simple terms and how it helps SEO",
+    title: "Explain this to me",
+    label: "Get a simple explanation",
+    action: "Can you explain this in simple terms?",
   },
   {
-    title: "Best filters for me",
-    label: "Based on niche and budget",
-    action: "Suggest the best publisher filters based on my niche and budget",
+    title: "Give me suggestions",
+    label: "Get recommendations and ideas",
+    action: "Can you give me some suggestions or recommendations?",
   },
   {
-    title: "Make payment",
-    label: "Proceed to checkout",
-    action: "Open the cart so I can make payment for selected publishers",
+    title: "Help me get started",
+    label: "Begin with a helpful guide",
+    action: "Help me get started. What should I know?",
   },
 ];
 
@@ -76,6 +76,7 @@ export function MultimodalInput({
   ) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingQuickPromptRef = useRef<string | null>(null);
   const { width } = useWindowSize();
   const [pageTitleBase] = useState<string>("OMS Chat Assistant");
 
@@ -84,6 +85,21 @@ export function MultimodalInput({
       adjustHeight();
     }
   }, []);
+
+  // Handle quick prompt submission after input state updates
+  useEffect(() => {
+    if (pendingQuickPromptRef.current && input === pendingQuickPromptRef.current) {
+      // Input has been set to the pending action, now submit
+      const action = pendingQuickPromptRef.current;
+      pendingQuickPromptRef.current = null;
+      // Use a small delay to ensure state is fully updated
+      setTimeout(() => {
+        handleSubmit(undefined, {
+          experimental_attachments: attachments,
+        });
+      }, 0);
+    }
+  }, [input, handleSubmit, attachments]);
 
   const adjustHeight = () => {
     if (textareaRef.current) {
@@ -222,11 +238,11 @@ export function MultimodalInput({
 
   // Rotating placeholder for the text area to guide user workflow
   const placeholderSteps = [
-    "Understand backlinking",
-    "Decide filters",
-    "Get data",
-    "Make payment",
-    "Done",
+    "Ask me anything",
+    "Get help with a task",
+    "Learn something new",
+    "Start a conversation",
+    "What's on your mind?",
   ];
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [slideshowOn, setSlideshowOn] = useState(true);
@@ -459,11 +475,11 @@ export function MultimodalInput({
               className="relative group"
             >
               <button
-                onClick={async () => {
-                  append({
-                    role: "user",
-                    content: suggestedAction.action,
-                  });
+                onClick={() => {
+                  // Set input and submit through normal flow (creates chat if needed)
+                  // Use ref to track pending action, useEffect will handle submission
+                  pendingQuickPromptRef.current = suggestedAction.action;
+                  setInput(suggestedAction.action);
                 }}
                 className="border border-border bg-card text-foreground rounded-full px-3 py-1.5 text-xs hover:bg-secondary/50 transition-all duration-200 whitespace-nowrap"
               >
