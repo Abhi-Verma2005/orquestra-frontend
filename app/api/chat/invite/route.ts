@@ -39,16 +39,37 @@ export async function POST(request: NextRequest) {
 
     // Generate invite URL based on environment or request origin
     // Priority:
-    // 1. NEXT_PUBLIC_APP_URL (recommended, e.g. https://your-frontend.com)
+    // 1. NEXT_PUBLIC_APP_URL (recommended, e.g. https://your-frontend.com) - MUST be set in production
     // 2. NEXT_PUBLIC_BASE_URL (fallback for backwards compatibility)
-    // 3. Request origin (works for local dev and most deployments)
-    const requestUrl = new URL(request.url);
-    const origin =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.NEXT_PUBLIC_BASE_URL ||
-      `${requestUrl.protocol}//${requestUrl.host}`;
+    // 3. Request headers (host + protocol from actual request)
+    // 4. localhost fallback (dev only)
+    let origin = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_BASE_URL;
+    
+    if (!origin) {
+      // Try to get from request headers (works in most deployments)
+      const host = request.headers.get('host');
+      const protocol = request.headers.get('x-forwarded-proto') || 
+                      (request.url.startsWith('https') ? 'https' : 'http');
+      
+      if (host) {
+        origin = `${protocol}://${host}`;
+      } else {
+        // Last resort: try parsing request.url
+        try {
+          const requestUrl = new URL(request.url);
+          origin = `${requestUrl.protocol}//${requestUrl.host}`;
+        } catch {
+          // Final fallback for local dev
+          origin = 'http://localhost:3000';
+        }
+      }
+    }
 
+    // Ensure origin doesn't have trailing slash
+    origin = origin.replace(/\/$/, '');
     const inviteUrl = `${origin}/chat/join?invite=${invite.inviteCode}`;
+    
+    console.log('[Invite] Generated invite URL:', inviteUrl, 'from origin:', origin);
 
     return NextResponse.json({
       inviteCode: invite.inviteCode,
