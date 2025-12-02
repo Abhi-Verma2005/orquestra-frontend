@@ -76,7 +76,6 @@ export function MultimodalInput({
   ) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const pendingQuickPromptRef = useRef<string | null>(null);
   const { width } = useWindowSize();
   const [pageTitleBase] = useState<string>("OMS Chat Assistant");
 
@@ -85,21 +84,6 @@ export function MultimodalInput({
       adjustHeight();
     }
   }, []);
-
-  // Handle quick prompt submission after input state updates
-  useEffect(() => {
-    if (pendingQuickPromptRef.current && input === pendingQuickPromptRef.current) {
-      // Input has been set to the pending action, now submit
-      const action = pendingQuickPromptRef.current;
-      pendingQuickPromptRef.current = null;
-      // Use a small delay to ensure state is fully updated
-      setTimeout(() => {
-        handleSubmit(undefined, {
-          experimental_attachments: attachments,
-        });
-      }, 0);
-    }
-  }, [input, handleSubmit, attachments]);
 
   const adjustHeight = () => {
     if (textareaRef.current) {
@@ -476,9 +460,6 @@ export function MultimodalInput({
             >
               <button
                 onClick={() => {
-                  // Set input and submit through normal flow (creates chat if needed)
-                  // Use ref to track pending action, useEffect will handle submission
-                  pendingQuickPromptRef.current = suggestedAction.action;
                   setInput(suggestedAction.action);
                 }}
                 className="border border-border bg-card text-foreground rounded-full px-3 py-1.5 text-xs hover:bg-secondary/50 transition-all duration-200 whitespace-nowrap"
