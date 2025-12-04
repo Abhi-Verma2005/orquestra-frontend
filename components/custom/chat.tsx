@@ -1330,7 +1330,7 @@ export function Chat({
         });
     }
 
-    // Include cart data in message payload
+
     const items = cartState.items || [];
     const cartDataForBackend = items.length > 0 ? {
       items: items.map(item => ({
