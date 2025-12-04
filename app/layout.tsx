@@ -1,6 +1,9 @@
 import { Metadata } from "next";
 import { Toaster } from "sonner";
 
+// SSR-safe polyfills (must be imported before any browser-only libs run)
+import "./polyfills/indexeddb";
+
 import { Providers } from "../components/providers";
 import { auth } from "./(auth)/auth";
 
