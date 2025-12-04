@@ -9,15 +9,15 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://oms-chat.vercel.app"),
   title: {
-    default: "OMS Chat Assistant",
-    template: "%s | OMS Chat",
+    default: "Web3 Chat",
+    template: "%s | Web3 Chat",
   },
   description:
-    "Chat with an AI assistant and collaborate with others in group conversations.",
+    "AI-powered Web3 chat with wallet-aware assistance and group conversations.",
   openGraph: {
-    title: "OMS Chat Assistant",
+    title: "Web3 Chat",
     description:
-      "AI-powered chat application with group conversation features. Chat with AI and collaborate with others.",
+      "AI-powered Web3 chat application with wallet integration and group conversation features.",
     url: "https://oms-chat.vercel.app",
     siteName: "OMS Chat",
     type: "website",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "OMS Chat Assistant",
     description:
-      "AI-powered chat application with group conversation features.",
+      "AI-powered Web3 chat application with wallet integration and group conversation features.",
   },
   alternates: {
     canonical: "https://oms-chat.vercel.app/",

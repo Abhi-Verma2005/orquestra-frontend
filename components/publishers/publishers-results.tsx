@@ -229,7 +229,7 @@ export function PublishersResults({ results, onAddToCart, onRemoveFromCart, cart
                   {/* Website Column */}
                   <td className="px-6 py-5">
                     <div className="flex items-start space-x-3">
-                      <div className="flex items-center space-x-1 flex-shrink-0">
+                      <div className="flex items-center space-x-1 shrink-0">
                         {[...Array(5)].map((_, i) => (
                           <span
                             key={i}
@@ -248,7 +248,7 @@ export function PublishersResults({ results, onAddToCart, onRemoveFromCart, cart
                           <span className="text-sm font-semibold truncate text-[#E0E0E0]">
                             {publisher.websiteName}
                           </span>
-                          <ExternalLink className="size-3.5 flex-shrink-0 text-[#569CD6]" />
+                          <ExternalLink className="size-3.5 shrink-0 text-[#569CD6]" />
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {publisher.doFollow && (

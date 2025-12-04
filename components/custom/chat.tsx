@@ -1,9 +1,11 @@
 "use client";
 
+import { useWallet } from '@solana/wallet-adapter-react';
 import { Attachment, Message, ToolInvocation } from "ai";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { useAccount } from 'wagmi';
 
 import { ChatMembers } from "./chat-members";
 import { InviteLinkDialog } from "./invite-link-dialog";
@@ -15,7 +17,9 @@ import { useScrollToBottom, useClaudeScroll, useEnhancedClaudeScroll } from "./u
 import { useCart } from "../../contexts/cart-context";
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import { useUserInfo } from "../../contexts/UserInfoProvider";
+import { useWalletAddresses } from "../../contexts/wallet-context";
 import { useWebSocket, MessageType, ChatMessage } from "../../contexts/websocket-context";
+import { WalletProfile } from "../wallet/wallet-profile";
 
 // Helper functions for localStorage draft keys
 const getPerChatDraftKey = (chatId: string) => `chat_draft_${chatId}`;
@@ -136,6 +140,10 @@ export function Chat({
   const [isGroupChat, setIsGroupChat] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [chatExists, setChatExists] = useState(false);
+  const { addresses: walletAddresses } = useWalletAddresses();
+  // Read wallet addresses directly from adapters for freshness (ensures we have current state on first message)
+  const { publicKey: solanaPublicKey } = useWallet();
+  const { address: ethereumAddress, isConnected: isEthConnected } = useAccount();
 
   // Load draft when chat ID or message count changes
   useEffect(() => {
@@ -399,9 +407,9 @@ export function Chat({
     // Handle ChatMessage events (from backend RoomMessage broadcasts)
     const unsubscribeChatMessage = onEvent(MessageType.ChatMessage, (payload: unknown) => {
       const data = payload as { room_id: string; payload: ChatMessage };
+      
       if (data.payload && data.room_id === id) {
         const chatMsg: ChatMessage = data.payload;
-        console.log("[Chat] ChatMessage received from backend:", chatMsg);
         
         // Handle system messages (user joined/left)
         if (chatMsg.role === "system" && chatMsg.content) {
@@ -427,25 +435,14 @@ export function Chat({
               });
           }
           
-          setMessages((prev) => {
-            // Check if this exact content already exists (deduplication)
-            const contentExists = prev.some(
-              (msg) => msg.role === "system" && msg.content === chatMsg.content
-            );
-            
-            if (contentExists) {
-              return prev;
-            }
-            
-            return [
-              ...prev,
-              {
-                id: messageId,
-                role: "system",
-                content: chatMsg.content,
-              },
-            ];
-          });
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: messageId,
+              role: "system",
+              content: chatMsg.content,
+            },
+          ]);
           return;
         }
         
@@ -454,63 +451,15 @@ export function Chat({
           setIsLoading(false);
           const messageId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
           
-          setMessages((prev) => {
-            // Improved deduplication: check if we already have this exact message
-            // Check by content + sender name (user_id) within a time window
-            const isOwnMessage = chatMsg.name === user?.id;
-            const now = Date.now();
-            
-            // Check for duplicates: same content + same sender
-            // For own messages, also check if it was added very recently (within 5 seconds)
-            const contentExists = prev.some((msg) => {
-              if (msg.role !== "user" || msg.content !== chatMsg.content) {
-                return false;
-              }
-              
-              const msgName = (msg as any).name;
-              if (msgName !== chatMsg.name) {
-                return false;
-              }
-              
-              // If content and sender match, it's a duplicate
-              // For own messages, also check recency to avoid false positives
-              if (isOwnMessage) {
-                try {
-                  // Extract timestamp from message ID (format: user_TIMESTAMP_random)
-                  const msgIdParts = msg.id.split('_');
-                  if (msgIdParts.length >= 2) {
-                    const msgTime = parseInt(msgIdParts[1] || '0');
-                    // If message was added in last 5 seconds with same content and sender, it's a duplicate
-                    if (!isNaN(msgTime) && (now - msgTime) < 5000) {
-                      return true;
-                    }
-                  }
-                } catch {
-                  // If parsing fails, still check content + name match
-                }
-              }
-              
-              // For all messages: if content + sender match, it's a duplicate
-              // This prevents the same message from appearing twice
-              return true;
-            });
-            
-            if (contentExists) {
-              console.log("[Chat] Duplicate group message detected, skipping. Sender:", chatMsg.name, "Content:", chatMsg.content.substring(0, 50));
-              return prev;
-            }
-            
-            console.log("[Chat] Adding group message. Sender:", chatMsg.name, "Content:", chatMsg.content.substring(0, 50));
-            return [
-              ...prev,
-              {
-                id: messageId,
-                role: "user",
-                content: chatMsg.content,
-                name: chatMsg.name, // Include sender's user_id
-              } as Message,
-            ];
-          });
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: messageId,
+              role: "user",
+              content: chatMsg.content,
+              name: chatMsg.name, // Include sender's user_id
+            } as Message,
+          ]);
           
           // Save to database for all group messages (including our own if received via broadcast)
           if (user) {
@@ -542,44 +491,86 @@ export function Chat({
         
         // Only handle assistant messages (user messages are already added via handleSubmit)
         if (chatMsg.role === "assistant" && chatMsg.content) {
+          console.log("[Chat] Received assistant message from backend:", {
+            role: chatMsg.role,
+            content: chatMsg.content.substring(0, 100),
+            room_id: data.room_id,
+            chat_id: id,
+            matches: data.room_id === id
+          });
+          
           setIsLoading(false);
           const messageId = `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
           
           setMessages((prev) => {
             // Check if this exact content already exists (deduplication)
-            const contentExists = prev.some(
-              (msg) => msg.role === "assistant" && msg.content === chatMsg.content
-            );
+            // Also check if it was added very recently (within 2 seconds) to prevent rapid duplicates
+            const now = Date.now();
+            const contentExists = prev.some((msg) => {
+              if (msg.role !== "assistant" || msg.content !== chatMsg.content) {
+                return false;
+              }
+              
+              // Check if message was added very recently (within 2 seconds)
+              try {
+                const msgIdParts = msg.id.split('_');
+                if (msgIdParts.length >= 2) {
+                  const msgTime = parseInt(msgIdParts[1] || '0');
+                  if (!isNaN(msgTime) && (now - msgTime) < 2000) {
+                    return true; // Very recent duplicate
+                  }
+                }
+              } catch {
+                // If parsing fails, still check content match
+              }
+              
+              return true; // Content matches
+            });
             
             if (contentExists) {
               console.log("[Chat] Duplicate message detected, skipping:", chatMsg.content.substring(0, 50));
               return prev; // Don't add duplicate
             }
             
-            // Check if we should update the last assistant message or create a new one
-            const lastAssistantIndex = prev.length - 1 >= 0 && prev[prev.length - 1].role === "assistant"
-              ? prev.length - 1
-              : -1;
+            console.log("[Chat] Adding new assistant message:", chatMsg.content.substring(0, 50));
             
-            if (lastAssistantIndex >= 0 && !prev[lastAssistantIndex].content) {
-              // Update existing empty assistant message
-              const updated = [...prev];
-              updated[lastAssistantIndex] = {
-                ...updated[lastAssistantIndex],
-                content: chatMsg.content,
-              };
-              return updated;
-            } else {
-              // Create new assistant message
-              return [
-                ...prev,
-                {
-                  id: messageId,
-                  role: "assistant",
-                  content: chatMsg.content,
-                },
-              ];
+            // Check if we should update the last assistant message or create a new one
+            // Look for the last assistant message that either has no content or has tool invocations
+            let lastAssistantIndex = -1;
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].role === "assistant") {
+                lastAssistantIndex = i;
+                break;
+              }
             }
+            
+            if (lastAssistantIndex >= 0) {
+              const lastAssistant = prev[lastAssistantIndex];
+              // Update if message has no content OR has tool invocations (to merge acknowledgment with tool results)
+              if (!lastAssistant.content || (lastAssistant.toolInvocations && lastAssistant.toolInvocations.length > 0)) {
+                // Update existing assistant message, preserving tool invocations
+                const updated = [...prev];
+                updated[lastAssistantIndex] = {
+                  ...updated[lastAssistantIndex],
+                  content: chatMsg.content,
+                  // Preserve existing tool invocations
+                  toolInvocations: updated[lastAssistantIndex].toolInvocations,
+                };
+                console.log("[Chat] ✅ Merged acknowledgment content into existing assistant message with tool invocations");
+                return updated;
+              }
+            }
+            
+            // Create new assistant message if no suitable existing one found
+            console.log("[Chat] Creating new assistant message for acknowledgment");
+            return [
+              ...prev,
+              {
+                id: messageId,
+                role: "assistant",
+                content: chatMsg.content,
+              },
+            ];
           });
           
           // Save to database
@@ -613,8 +604,14 @@ export function Chat({
     // Handle function call start (show loader)
     const unsubscribeFunctionCallStart = onEvent(MessageType.FunctionCallStart, (payload: unknown) => {
       const data = payload as { name: string };
-      console.log("[Chat] Function call start:", data.name);
-      setLoadingTools((prev) => new Set(prev).add(data.name));
+      console.log("[Chat] ✅ Function call start received:", data.name);
+      console.log("[Chat] Adding to loadingTools:", data.name);
+      setLoadingTools((prev) => {
+        const updated = new Set(prev);
+        updated.add(data.name);
+        console.log("[Chat] loadingTools updated:", Array.from(updated));
+        return updated;
+      });
     });
 
     // Handle function call end (keep loader until result arrives)
@@ -635,10 +632,11 @@ export function Chat({
         role?: string;
       };
       
-      console.log("[Chat] Function call:", data.name, data.args);
+      console.log("[Chat] ✅ Function call received:", data.name, data.args);
       
       // Add function call as a tool invocation in the last assistant message
       setMessages((prev) => {
+        console.log("[Chat] Current messages count:", prev.length);
         const updated = [...prev];
         // Find the last assistant message or create one
         let lastAssistantIndex = updated.length - 1;
@@ -1374,6 +1372,27 @@ export function Chat({
       totalPrice: items.reduce((sum, item) => sum + (item.price * item.quantity), 0),
     } : undefined;
 
+    // Prepare wallet addresses - read directly from adapters for freshness, fallback to context
+    // This ensures we always get the current wallet state, even on first message
+    const solanaAddress = solanaPublicKey?.toString() || walletAddresses.solana;
+    const ethereumAddressValue = (isEthConnected && ethereumAddress) ? ethereumAddress : walletAddresses.ethereum;
+    
+    const walletAddressesPayload = {
+      solana: solanaAddress || null,
+      ethereum: ethereumAddressValue || null,
+    };
+    
+    // Debug logging for wallet addresses
+    console.log('💼 [Chat] Wallet addresses being sent:', {
+      solanaPublicKey: solanaPublicKey?.toString(),
+      walletAddressesSolana: walletAddresses.solana,
+      finalSolana: walletAddressesPayload.solana,
+      ethereumAddress,
+      isEthConnected,
+      walletAddressesEthereum: walletAddresses.ethereum,
+      finalEthereum: walletAddressesPayload.ethereum,
+    });
+
     sendMessage({
       chat_id: id,
       user_id: user?.id,
@@ -1381,12 +1400,14 @@ export function Chat({
         room_id: id,
         payload: {
           ...userMessage,
-          ...(cartDataForBackend && { cartData: cartDataForBackend })
+          ...(cartDataForBackend && { cartData: cartDataForBackend }),
+          wallet_addresses: walletAddressesPayload,
         },
       },
       is_ai_message: isAiMessage, // true if: not group chat OR has "@ai" prefix
       is_group_chat: currentIsGroupChat, // Tell backend if this is a group chat (use latest value)
-      ...(cartDataForBackend && { cartData: cartDataForBackend })
+      ...(cartDataForBackend && { cartData: cartDataForBackend }),
+      wallet_addresses: walletAddressesPayload,
     });
 
     setInput("");
@@ -1398,7 +1419,22 @@ export function Chat({
         localStorage.removeItem(getPerChatDraftKey(id));
       } catch {}
     }
-  }, [input, isLoading, wsState, id, sendMessage, scrollToMessage, user, messages.length, router, cartState.items]);
+  }, [
+    input,
+    isLoading,
+    wsState,
+    id,
+    sendMessage,
+    scrollToMessage,
+    user,
+    messages.length,
+    router,
+    cartState.items,
+    walletAddresses,
+    solanaPublicKey,
+    ethereumAddress,
+    isEthConnected,
+  ]);
 
   // Stop generation
   const stop = useCallback(() => {
@@ -1429,6 +1465,27 @@ export function Chat({
     
     // If it's a user message and WebSocket is connected, send it via WebSocket
     if (newMessage.role === "user" && wsState === "connected" && newMessage.content) {
+      // Prepare wallet addresses for quick-append messages as well
+      const solanaAddress = solanaPublicKey?.toString() || walletAddresses.solana;
+      const ethereumAddressValue =
+        (isEthConnected && ethereumAddress) ? ethereumAddress : walletAddresses.ethereum;
+
+      const walletAddressesPayload = {
+        solana: solanaAddress || null,
+        ethereum: ethereumAddressValue || null,
+      };
+      
+      // Debug logging for wallet addresses in append
+      console.log('💼 [Chat] Wallet addresses being sent (append):', {
+        solanaPublicKey: solanaPublicKey?.toString(),
+        walletAddressesSolana: walletAddresses.solana,
+        finalSolana: walletAddressesPayload.solana,
+        ethereumAddress,
+        isEthConnected,
+        walletAddressesEthereum: walletAddresses.ethereum,
+        finalEthereum: walletAddressesPayload.ethereum,
+      });
+
       sendMessage({
         chat_id: id,
         user_id: user?.id,
@@ -1437,8 +1494,10 @@ export function Chat({
           payload: {
             role: "user",
             content: newMessage.content,
+            wallet_addresses: walletAddressesPayload,
           },
         },
+        wallet_addresses: walletAddressesPayload,
       });
       setIsLoading(true);
       stopRequestedRef.current = false;
@@ -1454,7 +1513,17 @@ export function Chat({
     }
     
     return newMessage.id;
-  }, [wsState, id, sendMessage, scrollToMessage]);
+  }, [
+    wsState,
+    id,
+    sendMessage,
+    scrollToMessage,
+    walletAddresses,
+    solanaPublicKey,
+    ethereumAddress,
+    isEthConnected,
+    user?.id,
+  ]);
 
   // Regenerate function (placeholder - would need backend support)
   const handleRegenerate = useCallback(() => {
@@ -1486,9 +1555,10 @@ export function Chat({
                 messages.length === 0 ? 'justify-center items-center' : 'justify-between'
               }`}
             >
-              {/* Invite button - show in existing chats (when id exists), not on home page */}
+              {/* Invite button and wallet profile - show in existing chats (when id exists), not on home page */}
               {id && (
-                <div className="absolute top-16 right-4 z-20 flex items-center gap-2">
+                <div className="absolute top-8 md:top-10 right-4 z-20 flex items-center gap-2">
+                  <WalletProfile />
                   <InviteLinkDialog chatId={id} />
                   {/* Show members list only if it's a group chat */}
                   {isGroupChat && user && (

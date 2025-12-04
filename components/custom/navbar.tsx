@@ -29,7 +29,7 @@ export const Navbar = async () => {
               <SlashIcon size={16} />
             </div>
             <div className="text-sm text-foreground truncate w-28 md:w-fit font-medium">
-              OMS Chat Assistant
+              Web3 Chat
             </div>
           </div>
         </div>

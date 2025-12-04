@@ -77,7 +77,7 @@ export function MultimodalInput({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
-  const [pageTitleBase] = useState<string>("OMS Chat Assistant");
+  const [pageTitleBase] = useState<string>("Web3 Chat");
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -459,7 +459,9 @@ export function MultimodalInput({
               className="relative group"
             >
               <button
-                onClick={() => {
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
                   setInput(suggestedAction.action);
                 }}
                 className="border border-border bg-card text-foreground rounded-full px-3 py-1.5 text-xs hover:bg-secondary/50 transition-all duration-200 whitespace-nowrap"

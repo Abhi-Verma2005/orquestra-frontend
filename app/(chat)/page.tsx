@@ -10,11 +10,11 @@ export default async function Page() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "OMS Chat Assistant",
+    name: "Web3 Chat",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description:
-      "AI-powered chat assistant for conversations and collaboration.",
+      "AI-powered Web3 chat assistant for wallet-aware conversations and collaboration.",
   };
 
   return (

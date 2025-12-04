@@ -87,11 +87,11 @@ export function LeftSidebar({ user, onCollapseChange }: LeftSidebarProps) {
                     <SlashIcon size={20} />
                   </div>
                   <div className="text-lg font-semibold text-foreground">
-                    OMS Chat
+                    Web3 Chat
                   </div>
                 </div>
                 <div className="text-sm text-muted-foreground text-center">
-                  AI-Powered Publisher Discovery
+                  AI-Powered Web3 Chat
                 </div>
               </div>
 

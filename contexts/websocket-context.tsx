@@ -37,6 +37,9 @@ export enum MessageType {
   UserMessage = "user_message",
   UserJoined = "user_joined",
   UserLeft = "user_left",
+  OpenSidebar = "open_sidebar",
+  WalletData = "wallet_data",
+  IntentDetected = "intent_detected",
 }
 
 export interface WebSocketMessage {
@@ -70,10 +73,20 @@ export interface SendMessageData {
       role: "user" | "assistant" | "system" | "function";
       content: string;
       name?: string;
+      // Also embed wallet addresses in the payload for robustness/debugging.
+      wallet_addresses?: {
+        solana: string | null;
+        ethereum: string | null;
+      };
     };
   };
   is_ai_message?: boolean; // Optional hint from frontend, backend will verify
   is_group_chat?: boolean; // Tell backend if this is a group chat
+  // Top-level wallet addresses so the backend can easily persist them per-connection.
+  wallet_addresses?: {
+    solana: string | null;
+    ethereum: string | null;
+  };
 }
 
 export interface ChatMessage {
