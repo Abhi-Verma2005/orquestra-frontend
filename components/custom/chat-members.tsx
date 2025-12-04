@@ -14,7 +14,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 interface ChatMember {
   id: string;
@@ -34,10 +43,17 @@ export function ChatMembers({ chatId, currentUserId, isOwner }: ChatMembersProps
   const [members, setMembers] = useState<ChatMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [memberToRemove, setMemberToRemove] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     loadMembers();
   }, [chatId]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadMembers();
+    }
+  }, [isOpen]);
 
   const loadMembers = async () => {
     try {
@@ -76,78 +92,116 @@ export function ChatMembers({ chatId, currentUserId, isOwner }: ChatMembersProps
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Users className="h-4 w-4" />
-        <span>Loading members...</span>
-      </div>
-    );
-  }
-
-  if (members.length === 0) {
-    return null;
-  }
-
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        <Users className="h-4 w-4" />
-        <span>Members ({members.length})</span>
-      </div>
-      <div className="space-y-1">
-        {members.map((member) => (
-          <div
-            key={member.id}
-            className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-accent"
-          >
-            <div className="flex items-center gap-2">
-              <span className="font-medium">
-                {member.userId === currentUserId ? "You" : member.userId}
-              </span>
-              {member.role === "owner" && (
-                <span className="text-xs text-muted-foreground">(Owner)</span>
-              )}
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <SheetTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-9 w-9"
+        >
+          <Users className="h-5 w-5" />
+          {members.length > 0 && (
+            <Badge
+              variant="secondary"
+              className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+            >
+              {members.length}
+            </Badge>
+          )}
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="w-full sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Chat Members
+          </SheetTitle>
+          <SheetDescription>
+            {members.length === 0
+              ? "No members yet"
+              : `${members.length} ${members.length === 1 ? "member" : "members"}`}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+              Loading members...
             </div>
-            {isOwner &&
-              member.role !== "owner" &&
-              member.userId !== currentUserId && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => setMemberToRemove(member.userId)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Remove Member</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Are you sure you want to remove this member from the chat?
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel onClick={() => setMemberToRemove(null)}>
-                        Cancel
-                      </AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => memberToRemove && removeMember(memberToRemove)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
-                        Remove
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-          </div>
-        ))}
-      </div>
-    </div>
+          ) : members.length === 0 ? (
+            <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
+              No members found
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {members.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between rounded-lg border bg-card p-3 hover:bg-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                      <Users className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">
+                        {member.userId === currentUserId ? "You" : member.userId}
+                      </span>
+                      {member.role === "owner" && (
+                        <Badge variant="outline" className="mt-1 w-fit text-xs">
+                          Owner
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  {isOwner &&
+                    member.role !== "owner" &&
+                    member.userId !== currentUserId && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => setMemberToRemove(member.userId)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove Member</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to remove this member from the chat?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel
+                              onClick={() => setMemberToRemove(null)}
+                            >
+                              Cancel
+                            </AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => {
+                                if (memberToRemove) {
+                                  removeMember(memberToRemove);
+                                }
+                              }}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Remove
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

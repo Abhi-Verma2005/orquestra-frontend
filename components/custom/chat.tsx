@@ -202,7 +202,6 @@ export function Chat({
           setChatExists(true); // Chat exists in database
         } else {
           // If API fails (404), chat doesn't exist yet (e.g., home page with random UUID)
-          console.warn("Chat not found, assuming it doesn't exist yet");
           setIsGroupChat(false);
           setIsOwner(false);
           setChatExists(false);
@@ -223,6 +222,8 @@ export function Chat({
   }, [id, user]);
 
   // Join chat on mount - only if chat exists (not on home page with random UUID)
+  // Use a ref to track the last joined chat ID to prevent duplicate joins
+  const lastJoinedChatIdRef = useRef<string | null>(null);
   useEffect(() => {
     // Only join if:
     // 1. Chat exists (loaded from database) OR
@@ -230,15 +231,23 @@ export function Chat({
     // This prevents joining on home page where id is just a random UUID
     const shouldJoin = chatExists || messages.length > 0;
     
-    if (wsState === "connected" && shouldJoin && id) {
-      joinChat(id, user?.id);
+    // Only join if we haven't already joined this chat
+    if (wsState === "connected" && shouldJoin && id && lastJoinedChatIdRef.current !== id) {
+      const userName = userInfo?.name || userInfo?.email || user?.email || user?.name || undefined;
+      joinChat(id, user?.id, userName);
+      lastJoinedChatIdRef.current = id;
     }
+    
     return () => {
       if (shouldJoin && id) {
-      leaveChat(id);
+        leaveChat(id);
+        // Reset when leaving
+        if (lastJoinedChatIdRef.current === id) {
+          lastJoinedChatIdRef.current = null;
+        }
       }
     };
-  }, [id, wsState, joinChat, leaveChat, user?.id, chatExists, messages.length]);
+  }, [id, wsState, joinChat, leaveChat, user?.id, chatExists, userInfo?.name, userInfo?.email, user?.email, user?.name]);
 
   // If we navigated after creating a new chat, pick up the pending first message and send it
   useEffect(() => {
@@ -302,13 +311,11 @@ export function Chat({
     // Handle text streaming
     const unsubscribeTextStream = onEvent(MessageType.TextStream, (payload: unknown) => {
       const data = payload as { text: string; isComplete?: boolean };
-      console.log("[Chat] TextStream received:", data.text?.substring(0, 50), "currentMessageId:", currentAssistantMessageIdRef.current);
       if (data.text) {
         setIsLoading(true);
         const messageId = currentAssistantMessageIdRef.current || `stream_${Date.now()}`;
         if (!currentAssistantMessageIdRef.current) {
           currentAssistantMessageIdRef.current = messageId;
-          console.log("[Chat] Created new messageId:", messageId);
         }
         
         setStreamingContent((prev) => ({
@@ -321,12 +328,10 @@ export function Chat({
     // Handle text stream end
     const unsubscribeTextStreamEnd = onEvent(MessageType.TextStreamEnd, (payload: unknown) => {
       const data = payload as { text?: string };
-      console.log("[Chat] TextStreamEnd received, messageId:", currentAssistantMessageIdRef.current);
       setIsLoading(false);
       if (currentAssistantMessageIdRef.current) {
         const messageId = currentAssistantMessageIdRef.current;
         const content = data.text || streamingContent[messageId] || "";
-        console.log("[Chat] Creating/updating assistant message with content length:", content.length);
         
         setMessages((prev) => {
           // Check if assistant message already exists
@@ -343,10 +348,8 @@ export function Chat({
               ...updatedMessages[existingIndex],
               content,
             };
-            console.log("[Chat] Updated existing message at index:", existingIndex);
           } else {
             // Add new assistant message
-            console.log("[Chat] Creating new assistant message with id:", messageId);
             updatedMessages = [
               ...prev,
               {
@@ -408,50 +411,71 @@ export function Chat({
     const unsubscribeChatMessage = onEvent(MessageType.ChatMessage, (payload: unknown) => {
       const data = payload as { room_id: string; payload: ChatMessage };
       
-      if (data.payload && data.room_id === id) {
-        const chatMsg: ChatMessage = data.payload;
+      // CRITICAL: Only process messages if room_id matches current chat id AND chat exists
+      // This prevents processing messages for other chats or creating chats from random UUIDs on home page
+      if (!data.payload || !data.room_id || data.room_id !== id) {
+        return;
+      }
+      
+      // Additional safety check: Don't process messages if we're on the home page (chat doesn't exist yet)
+      // The home page has a random UUID that doesn't correspond to a real chat
+      if (!chatExists && messages.length === 0) {
+        return;
+      }
+      
+      const chatMsg: ChatMessage = data.payload;
+      
+      // Handle system messages (user joined/left)
+      if (chatMsg.role === "system" && chatMsg.content) {
+        setIsLoading(false);
+        const messageId = `system_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         
-        // Handle system messages (user joined/left)
-        if (chatMsg.role === "system" && chatMsg.content) {
-          setIsLoading(false);
-          const messageId = `system_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-          
-          // If a user joined, reload chat info to update isGroupChat status
-          if (chatMsg.content.includes("joined the chat") && id && user) {
-            fetch(`/api/chat/info?id=${id}`)
-              .then((response) => {
-                if (response.ok) {
-                  return response.json();
-                }
-              })
-              .then((data) => {
-                if (data) {
-                  setIsGroupChat(data.isGroupChat || false);
-                  setIsOwner(data.userId === user?.id);
-                }
-              })
-              .catch((error) => {
-                console.error("Error reloading chat info after user joined:", error);
-              });
-          }
-          
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: messageId,
-              role: "system",
-              content: chatMsg.content,
-            },
-          ]);
-          return;
+        // If a user joined, reload chat info to update isGroupChat status
+        if (chatMsg.content.includes("joined the chat") && id && user) {
+          fetch(`/api/chat/info?id=${id}`)
+            .then((response) => {
+              if (response.ok) {
+                return response.json();
+              }
+            })
+            .then((data) => {
+              if (data) {
+                setIsGroupChat(data.isGroupChat || false);
+                setIsOwner(data.userId === user?.id);
+              }
+            })
+            .catch((error) => {
+              console.error("Error reloading chat info after user joined:", error);
+            });
         }
         
-        // Handle user messages (group messages)
-        if (chatMsg.role === "user" && chatMsg.content) {
-          setIsLoading(false);
-          const messageId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-          
-          setMessages((prev) => [
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: messageId,
+            role: "system",
+            content: chatMsg.content,
+          },
+        ]);
+        return;
+      }
+      
+      // Handle user messages (group messages)
+      if (chatMsg.role === "user" && chatMsg.content) {
+        setIsLoading(false);
+        const messageId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+        
+        setMessages((prev) => {
+          // Check for duplicates before adding
+          const isDuplicate = prev.some((msg) => 
+            msg.role === "user" && 
+            msg.content === chatMsg.content && 
+            msg.name === chatMsg.name
+          );
+          if (isDuplicate) {
+            return prev;
+          }
+          return [
             ...prev,
             {
               id: messageId,
@@ -459,50 +483,44 @@ export function Chat({
               content: chatMsg.content,
               name: chatMsg.name, // Include sender's user_id
             } as Message,
-          ]);
-          
-          // Save to database for all group messages (including our own if received via broadcast)
-          if (user) {
-            const userMessage = {
-              id: messageId,
-              role: "user",
-              content: chatMsg.content,
-              name: chatMsg.name,
-            };
-            fetch("/api/chat/message", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chatId: id,
-                message: userMessage,
-              }),
-            })
-              .then((res) => {
-                if (!res.ok) {
-                  console.error("[Chat] Failed to save user message:", res.status, res.statusText);
-                }
-              })
-              .catch((err) => {
-                console.error("[Chat] Failed to save user message:", err);
-              });
-          }
-          return;
-        }
+          ];
+        });
         
-        // Only handle assistant messages (user messages are already added via handleSubmit)
-        if (chatMsg.role === "assistant" && chatMsg.content) {
-          console.log("[Chat] Received assistant message from backend:", {
-            role: chatMsg.role,
-            content: chatMsg.content.substring(0, 100),
-            room_id: data.room_id,
-            chat_id: id,
-            matches: data.room_id === id
-          });
-          
-          setIsLoading(false);
-          const messageId = `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-          
-          setMessages((prev) => {
+        // Save to database for all group messages (including our own if received via broadcast)
+        // Only save if chat exists (not on home page with random UUID)
+        if (user && chatExists) {
+          const userMessage = {
+            id: messageId,
+            role: "user",
+            content: chatMsg.content,
+            name: chatMsg.name,
+          };
+          fetch("/api/chat/message", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chatId: id,
+              message: userMessage,
+            }),
+          })
+            .then((res) => {
+              if (!res.ok) {
+                console.error("[Chat] Failed to save user message:", res.status, res.statusText);
+              }
+            })
+            .catch((err) => {
+              console.error("[Chat] Failed to save user message:", err);
+            });
+        }
+        return;
+      }
+      
+      // Only handle assistant messages (user messages are already added via handleSubmit)
+      if (chatMsg.role === "assistant" && chatMsg.content) {
+        setIsLoading(false);
+        const messageId = `assistant_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+        
+        setMessages((prev) => {
             // Check if this exact content already exists (deduplication)
             // Also check if it was added very recently (within 2 seconds) to prevent rapid duplicates
             const now = Date.now();
@@ -528,11 +546,8 @@ export function Chat({
             });
             
             if (contentExists) {
-              console.log("[Chat] Duplicate message detected, skipping:", chatMsg.content.substring(0, 50));
               return prev; // Don't add duplicate
             }
-            
-            console.log("[Chat] Adding new assistant message:", chatMsg.content.substring(0, 50));
             
             // Check if we should update the last assistant message or create a new one
             // Look for the last assistant message that either has no content or has tool invocations
@@ -556,47 +571,45 @@ export function Chat({
                   // Preserve existing tool invocations
                   toolInvocations: updated[lastAssistantIndex].toolInvocations,
                 };
-                console.log("[Chat] ✅ Merged acknowledgment content into existing assistant message with tool invocations");
                 return updated;
               }
             }
             
             // Create new assistant message if no suitable existing one found
-            console.log("[Chat] Creating new assistant message for acknowledgment");
-            return [
-              ...prev,
-              {
-                id: messageId,
-                role: "assistant",
-                content: chatMsg.content,
-              },
-            ];
-          });
-          
-          // Save to database
-          if (user) {
-            const assistantMessage = {
+          return [
+            ...prev,
+            {
               id: messageId,
               role: "assistant",
               content: chatMsg.content,
-            };
-            fetch("/api/chat/message", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chatId: id,
-                message: assistantMessage,
-              }),
+            },
+          ];
+        });
+        
+        // Save to database
+        // Only save if chat exists (not on home page with random UUID)
+        if (user && chatExists) {
+          const assistantMessage = {
+            id: messageId,
+            role: "assistant",
+            content: chatMsg.content,
+          };
+          fetch("/api/chat/message", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chatId: id,
+              message: assistantMessage,
+            }),
+          })
+            .then((res) => {
+              if (!res.ok) {
+                console.error("[Chat] Failed to save assistant message:", res.status, res.statusText);
+              }
             })
-              .then((res) => {
-                if (!res.ok) {
-                  console.error("[Chat] Failed to save assistant message:", res.status, res.statusText);
-                }
-              })
-              .catch((err) => {
-                console.error("[Chat] Failed to save assistant message:", err);
-              });
-          }
+            .catch((err) => {
+              console.error("[Chat] Failed to save assistant message:", err);
+            });
         }
       }
     });
@@ -604,12 +617,9 @@ export function Chat({
     // Handle function call start (show loader)
     const unsubscribeFunctionCallStart = onEvent(MessageType.FunctionCallStart, (payload: unknown) => {
       const data = payload as { name: string };
-      console.log("[Chat] ✅ Function call start received:", data.name);
-      console.log("[Chat] Adding to loadingTools:", data.name);
       setLoadingTools((prev) => {
         const updated = new Set(prev);
         updated.add(data.name);
-        console.log("[Chat] loadingTools updated:", Array.from(updated));
         return updated;
       });
     });
@@ -618,8 +628,6 @@ export function Chat({
     // Note: We don't remove from loadingTools here because we want the loader
     // to stay visible until the FunctionResult event arrives
     const unsubscribeFunctionCallEnd = onEvent(MessageType.FunctionCallEnd, (payload: unknown) => {
-      const data = payload as { name: string };
-      console.log("[Chat] Function call end:", data.name, "- keeping loader until result arrives");
       // Don't remove from loadingTools yet - wait for FunctionResult
     });
 
@@ -632,18 +640,14 @@ export function Chat({
         role?: string;
       };
       
-      console.log("[Chat] ✅ Function call received:", data.name, data.args);
-      
       // Add function call as a tool invocation in the last assistant message
       setMessages((prev) => {
-        console.log("[Chat] Current messages count:", prev.length);
         const updated = [...prev];
         // Find the last assistant message or create one
         let lastAssistantIndex = updated.length - 1;
         while (lastAssistantIndex >= 0 && updated[lastAssistantIndex].role !== "assistant") {
           lastAssistantIndex--;
         }
-        console.log("[Chat] Function call - found last assistant at index:", lastAssistantIndex, "total messages:", updated.length);
         
         if (lastAssistantIndex >= 0) {
           // Add tool invocation to existing assistant message
@@ -658,7 +662,6 @@ export function Chat({
           
           // Only add to assistant message if it comes AFTER the last user message
           if (lastUserIndex === -1 || messageIndex > lastUserIndex) {
-            console.log("[Chat] Adding to existing message:", message.id, "content length:", message.content?.length);
             if (!message.toolInvocations) {
               message.toolInvocations = [];
             }
@@ -693,19 +696,14 @@ export function Chat({
                   .then((res) => {
                     if (!res.ok) {
                       console.error("[Chat] Failed to save function call:", res.status, res.statusText);
-                    } else {
-                      console.log("[Chat] Successfully saved message with function call to DB");
                     }
                   })
                   .catch((err) => {
                     console.error("[Chat] Failed to save function call:", err);
                   });
               }
-            } else {
-              console.log("[Chat] Tool invocation already exists in call state, skipping duplicate");
             }
           } else {
-            console.log("[Chat] Last assistant message is older than last user message, creating new assistant message");
             // Create a new assistant message instead
             const newMessage: Message = {
               id: `assistant_${Date.now()}`,
@@ -733,8 +731,6 @@ export function Chat({
                 .then((res) => {
                   if (!res.ok) {
                     console.error("[Chat] Failed to save new function call:", res.status, res.statusText);
-                  } else {
-                    console.log("[Chat] Successfully saved new message with function call to DB");
                   }
                 })
                 .catch((err) => {
@@ -744,7 +740,6 @@ export function Chat({
           }
         } else {
           // Create a new assistant message with tool invocation
-          console.log("[Chat] Creating new assistant message for function call");
           const newMessage: Message = {
             id: `assistant_${Date.now()}`,
             role: "assistant",
@@ -771,8 +766,6 @@ export function Chat({
               .then((res) => {
                 if (!res.ok) {
                   console.error("[Chat] Failed to save new function call:", res.status, res.statusText);
-                } else {
-                  console.log("[Chat] Successfully saved new message with function call to DB");
                 }
               })
               .catch((err) => {
@@ -787,11 +780,9 @@ export function Chat({
     // Handle function results
     const unsubscribeFunctionResult = onEvent(MessageType.FunctionResult, (payload: unknown) => {
       const data = payload as { name: string; result: unknown; role?: string };
-      console.log("[Chat] Function result:", data.name, data.result);
       
       // Skip browsePublishers - it's handled by PublishersData event
       if (data.name === "browsePublishers") {
-        console.log("[Chat] Skipping FunctionResult for browsePublishers - handled by PublishersData");
         return;
       }
       
@@ -843,8 +834,6 @@ export function Chat({
                   .then((res) => {
                     if (!res.ok) {
                       console.error("[Chat] Failed to save function result:", res.status, res.statusText);
-                    } else {
-                      console.log("[Chat] Successfully saved message with function result to DB");
                     }
                   })
                   .catch((err) => {
@@ -861,7 +850,6 @@ export function Chat({
     // Handle publishers data
     const unsubscribePublishersData = onEvent(MessageType.PublishersData, (payload: unknown) => {
       const data = payload as { publishers: unknown[]; totalCount: number; filters?: unknown };
-      console.log("[Chat] Publishers data received:", data, "totalCount:", data.totalCount, "publishers:", data.publishers);
       
       // Safety check
       if (!data.publishers || !Array.isArray(data.publishers)) {
@@ -973,8 +961,6 @@ export function Chat({
                   .then((res) => {
                     if (!res.ok) {
                       console.error("[Chat] Failed to save publishers data:", res.status, res.statusText);
-                    } else {
-                      console.log("[Chat] Successfully saved message with publishers data to DB");
                     }
                   })
                   .catch((err) => {
@@ -1005,7 +991,6 @@ export function Chat({
         };
         message?: string;
       };
-      console.log("[Chat] CartData received:", data);
       
       // Remove viewCart from loadingTools since we have the data
       setLoadingTools((prev) => {
@@ -1067,8 +1052,6 @@ export function Chat({
                     .then((res) => {
                       if (!res.ok) {
                         console.error("[Chat] Failed to save cart data:", res.status, res.statusText);
-                      } else {
-                        console.log("[Chat] Successfully saved message with cart data to DB");
                       }
                     })
                     .catch((err) => {
@@ -1113,7 +1096,6 @@ export function Chat({
     // Handle cart updated - add item to cart
     const unsubscribeCartUpdated = onEvent(MessageType.CartUpdated, (payload: unknown) => {
       const data = payload as { action: 'add'; item: { type: "publisher" | "product"; name: string; price: number; quantity: number; metadata?: unknown } };
-      console.log("[Chat] CartUpdated received:", data);
       
       if (data.action === 'add' && data.item) {
         // Generate a cart ID for the item
@@ -1148,6 +1130,7 @@ export function Chat({
       unsubscribeTextStream();
       unsubscribeTextStreamEnd();
       unsubscribeMessageReceived();
+      unsubscribeChatMessage();
       unsubscribeFunctionCallStart();
       unsubscribeFunctionCallEnd();
       unsubscribeFunctionCall();
@@ -1156,18 +1139,6 @@ export function Chat({
       unsubscribeCartData();
       unsubscribeCartUpdated();
       unsubscribeError();
-    };
-    return () => {
-      unsubscribeTextStream();
-      unsubscribeTextStreamEnd();
-      unsubscribeMessageReceived();
-      unsubscribeChatMessage();
-      unsubscribeFunctionCallStart();
-      unsubscribeFunctionCallEnd();
-      unsubscribeFunctionCall();
-      unsubscribeFunctionResult();
-      unsubscribePublishersData();
-      unsubscribeCartData();
     };
   }, [onEvent, streamingContent, id, user, cartState.items, addItemToCart, setRightPanelContent, setMessages, setLoadingTools]);
 
@@ -1382,17 +1353,6 @@ export function Chat({
       ethereum: ethereumAddressValue || null,
     };
     
-    // Debug logging for wallet addresses
-    console.log('💼 [Chat] Wallet addresses being sent:', {
-      solanaPublicKey: solanaPublicKey?.toString(),
-      walletAddressesSolana: walletAddresses.solana,
-      finalSolana: walletAddressesPayload.solana,
-      ethereumAddress,
-      isEthConnected,
-      walletAddressesEthereum: walletAddresses.ethereum,
-      finalEthereum: walletAddressesPayload.ethereum,
-    });
-
     sendMessage({
       chat_id: id,
       user_id: user?.id,
@@ -1475,17 +1435,6 @@ export function Chat({
         ethereum: ethereumAddressValue || null,
       };
       
-      // Debug logging for wallet addresses in append
-      console.log('💼 [Chat] Wallet addresses being sent (append):', {
-        solanaPublicKey: solanaPublicKey?.toString(),
-        walletAddressesSolana: walletAddresses.solana,
-        finalSolana: walletAddressesPayload.solana,
-        ethereumAddress,
-        isEthConnected,
-        walletAddressesEthereum: walletAddresses.ethereum,
-        finalEthereum: walletAddressesPayload.ethereum,
-      });
-
       sendMessage({
         chat_id: id,
         user_id: user?.id,
@@ -1528,7 +1477,6 @@ export function Chat({
   // Regenerate function (placeholder - would need backend support)
   const handleRegenerate = useCallback(() => {
     // TODO: Implement regeneration via WebSocket
-    console.log("Regenerate not yet implemented");
   }, []);
 
   return (
@@ -1591,7 +1539,9 @@ export function Chat({
                         isGenerating={isLoading && index === messages.length - 1 && message.role === "assistant"}
                         onAppendMessage={append}
                         loadingTools={loadingTools}
-                        name={(message as any).name} // Pass user name for group messages
+                        name={(message as any).name} // Internal sender identifier (usually user ID)
+                        currentUserId={user?.id}
+                        currentUserDisplayName={user?.name || user?.email || user?.id}
                       />
                     </div>
                   ))}

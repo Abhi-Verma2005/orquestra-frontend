@@ -11,6 +11,12 @@ import { ReactNode, useMemo } from 'react'
 import { WagmiProvider, createConfig, http } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
 
+// Disable Coinbase CDP analytics
+if (typeof window !== 'undefined') {
+  (window as any).DISABLE_CDP_ERROR_REPORTING = true
+  ;(window as any).DISABLE_CDP_USAGE_TRACKING = true
+}
+
 const queryClient = new QueryClient()
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'default-project-id'
 const chains = [mainnet] as [typeof mainnet]
@@ -20,7 +26,15 @@ const { wallets } = getDefaultWallets({
   projectId,
 })
 
-const connectors = connectorsForWallets(wallets, {
+// Filter out Coinbase Wallet to prevent analytics calls to cca-lite.coinbase.com.
+// `getDefaultWallets` returns wallet *groups*, and the concrete wallet configs are
+// not strongly typed with an `id` field here, so we use a relaxed type to inspect it.
+const walletsWithoutCoinbase = wallets.filter((walletGroup: any) => {
+  if (!walletGroup?.id) return true; // Keep groups without an id
+  return !walletGroup.id.toLowerCase().includes('coinbase');
+});
+
+const connectors = connectorsForWallets(walletsWithoutCoinbase, {
   appName: 'Cursorr',
   projectId,
 })

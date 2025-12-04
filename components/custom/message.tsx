@@ -60,6 +60,8 @@ export const Message = ({
   onAppendMessage,
   loadingTools,
   name,
+  currentUserId,
+  currentUserDisplayName,
 }: {
   chatId: string;
   role: string;
@@ -71,7 +73,9 @@ export const Message = ({
   isGenerating?: boolean;
   onAppendMessage?: (message: { role: 'user'; content: string }) => Promise<string | null | undefined>;
   loadingTools?: Set<string>;
-  name?: string; // User ID or name for group messages
+  name?: string; // Internal sender identifier (usually user ID in group messages)
+  currentUserId?: string;
+  currentUserDisplayName?: string; // What to show for the current user in the UI
 }) => {
   const { setRightPanelContent, closeRightPanel } = useSplitScreen();
   const { addItem, removeItem, getCartItemIds, state: cartState, clearCart } = useCart();
@@ -330,11 +334,25 @@ export const Message = ({
 
       <div className="flex flex-col gap-2 w-full">
         {/* Show user name for user messages in group chats */}
-        {role === "user" && name && (
+        {role === "user" && (() => {
+          // Derive a display label:
+          // - For the current user, prefer a friendly display name (username / email)
+          // - For others, fall back to the raw name value
+          if (!name) return null;
+
+          const isCurrentUser = currentUserId && name === currentUserId;
+          const label = isCurrentUser
+            ? (currentUserDisplayName || name)
+            : name;
+
+          if (!label) return null;
+
+          return (
           <div className="text-xs text-muted-foreground font-medium mb-1">
-            {name}
+            {label}
           </div>
-        )}
+          );
+        })()}
         
         {/* Show system message styling */}
         {role === "system" && (
