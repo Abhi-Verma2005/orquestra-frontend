@@ -1,7 +1,7 @@
 import "server-only";
 
 import { genSaltSync, hashSync } from "bcrypt-ts";
-import { desc, eq, and, sql, or, lt, gte } from "drizzle-orm";
+import { desc, eq, and, sql, or, lt, gte, ilike } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
@@ -26,6 +26,30 @@ export async function getUserById(id: string) {
     return user;
   } catch (error) {
     console.error("Failed to get user by ID from database");
+    throw error;
+  }
+}
+
+// Search users by email (and optionally by ID) for inviting to chats.
+// NOTE: This intentionally returns only basic fields (id, email).
+export async function searchUsers(query: string, limit: number = 10) {
+  try {
+    const q = `%${query}%`;
+    return await db
+      .select({
+        id: users.id,
+        email: users.email,
+      })
+      .from(users)
+      .where(
+        or(
+          ilike(users.email, q),
+          ilike(users.id, q),
+        ),
+      )
+      .limit(limit);
+  } catch (error) {
+    console.error("Failed to search users", error);
     throw error;
   }
 }
