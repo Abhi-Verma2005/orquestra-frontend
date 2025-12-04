@@ -1179,7 +1179,10 @@ export function Chat({
       event.preventDefault();
     }
     
-    if (!input.trim() || isLoading || wsState !== "connected") {
+    // Always allow the first message to create a chat, even if WebSocket
+    // connection hasn't finished establishing yet. We'll defer the actual
+    // WebSocket send to the pending-first-message handler on the new chat page.
+    if (!input.trim() || isLoading) {
       return;
     }
 
