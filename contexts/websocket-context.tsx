@@ -1,5 +1,6 @@
 "use client";
 
+import { Message } from "ai";
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 
 // WebSocket message types matching backend protocol
@@ -81,6 +82,7 @@ export interface SendMessageData {
       };
     };
   };
+  chat_array?: Message[];
   is_ai_message?: boolean; // Optional hint from frontend, backend will verify
   is_group_chat?: boolean; // Tell backend if this is a group chat
   // Top-level wallet addresses so the backend can easily persist them per-connection.

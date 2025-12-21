@@ -106,12 +106,6 @@ export async function saveChat({
     // Optimistic approach: try insert first (faster for new chats)
     // If it fails due to duplicate key (race condition), fall back to update
     try {
-      console.log("[SAVE_CHAT_INSERT]", {
-        id,
-        userId,
-        title,
-        hasSummary: summary !== undefined,
-      });
 
       const inserted = await db.insert(chat).values({
         id,
@@ -123,19 +117,11 @@ export async function saveChat({
         summary: summary || null,
       }).returning();
 
-      console.log("[SAVE_CHAT_INSERT_RESULT]", {
-        count: inserted.length,
-        firstId: inserted[0]?.id,
-      });
+      console.log(inserted)
+
 
       return inserted;
     } catch (insertError: any) {
-      console.error("[SAVE_CHAT_INSERT_ERROR]", {
-        id,
-        code: insertError?.code,
-        message: insertError?.message,
-        severity: insertError?.severity,
-      });
 
       // Check if it's a duplicate key error (PostgreSQL error code 23505)
       const isDuplicateKey = 
@@ -147,15 +133,12 @@ export async function saveChat({
 
       if (isDuplicateKey) {
         // Chat was created by another request (race condition), update instead
+
         const updated = await db
           .update(chat)
           .set(updateData)
           .where(eq(chat.id, id));
 
-        console.log("[SAVE_CHAT_UPDATE_RESULT]", {
-          id,
-          updatedCount: (updated as any)?.rowCount ?? undefined,
-        });
 
         return updated;
       }
