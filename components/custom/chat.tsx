@@ -14,8 +14,6 @@ import { Message as PreviewMessage } from "./message";
 import { MultimodalInput } from "./multimodal-input";
 import { RightPanel } from "./RightPanel";
 import {
-  useScrollToBottom,
-  useClaudeScroll,
   useEnhancedClaudeScroll,
 } from "./use-scroll-to-bottom";
 import { useCart } from "../../contexts/cart-context";
@@ -28,8 +26,6 @@ import {
   ChatMessage,
 } from "../../contexts/websocket-context";
 import { WalletProfile } from "../wallet/wallet-profile";
-
-// Helper functions for localStorage draft keys
 const getPerChatDraftKey = (chatId: string) => `chat_draft_${chatId}`;
 const NEW_CHAT_DRAFT_KEY = `chat_draft_new`;
 
@@ -38,7 +34,7 @@ export function Chat({
   initialMessages,
   user,
 }: {
-  id: string;
+  id: string | null;
   initialMessages: Array<Message>;
   user?: any;
 }) {
@@ -141,20 +137,16 @@ export function Chat({
   const currentAssistantMessageIdRef = useRef<string | null>(null);
   const stopRequestedRef = useRef(false);
   const lastUserMessageRef = useRef<string | null>(null);
-
-  // Get last message ID for streaming scroll tracking
   const lastMessageId = useMemo(() => {
     if (messages.length === 0) return undefined;
     return messages[messages.length - 1].id;
   }, [messages]);
-
   const [messagesContainerRef, scrollToMessage] =
     useEnhancedClaudeScroll<HTMLDivElement>(
       !isLoading,
       isLoading,
       lastMessageId
     );
-
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const { isRightPanelOpen } = useSplitScreen();
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
@@ -162,16 +154,12 @@ export function Chat({
   const [isOwner, setIsOwner] = useState(false);
   const [chatExists, setChatExists] = useState(false);
   const { addresses: walletAddresses } = useWalletAddresses();
-  // Read wallet addresses directly from adapters for freshness (ensures we have current state on first message)
   const { publicKey: solanaPublicKey } = useWallet();
   const { address: ethereumAddress, isConnected: isEthConnected } =
     useAccount();
-
-  // Load draft when chat ID or message count changes
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && id) {
       try {
-        // Prefer new-chat draft when there are no messages yet
         const key =
           messages.length === 0 ? NEW_CHAT_DRAFT_KEY : getPerChatDraftKey(id);
         const saved = localStorage.getItem(key);
@@ -186,7 +174,7 @@ export function Chat({
 
   // Save draft to localStorage whenever input changes (debounced)
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && id) {
       // Clear previous timeout
       if (saveDraftTimeoutRef.current) {
         clearTimeout(saveDraftTimeoutRef.current);
@@ -274,7 +262,6 @@ export function Chat({
 
     return () => {
       if (shouldJoin && id) {
-        leaveChat(id);
         // Reset when leaving
         if (lastJoinedChatIdRef.current === id) {
           lastJoinedChatIdRef.current = null;
@@ -300,18 +287,17 @@ export function Chat({
     if (wsState !== "connected") return;
     try {
       const key = `pending_first_message_${id}`;
+      console.log("id: ", id);
       const raw = sessionStorage.getItem(key);
       if (!raw) return;
       const parsed = JSON.parse(raw);
 
       // Handle both old format (just Message) and new format (with cartData)
       let pending: Message;
-      let cartData: any;
 
       if (parsed.message) {
         // New format: { message: Message, cartData?: any }
         pending = parsed.message;
-        cartData = parsed.cartData;
       } else {
         // Old format: just Message
         pending = parsed as Message;
@@ -326,16 +312,12 @@ export function Chat({
             payload: {
               role: "user",
               content: pending.content,
-              ...(cartData && { cartData: cartData }),
             },
           },
         };
 
-        // Include cartData if it exists
-        if (cartData) {
-          messagePayload.cartData = cartData;
-        }
-
+        
+        
         sendMessage(messagePayload);
         setIsLoading(true);
         stopRequestedRef.current = false;
@@ -1477,35 +1459,10 @@ export function Chat({
           setChatExists(true);
 
           // Prepare cart data and selected documents to store with pending message
-          const items = cartState.items || [];
-          const cartDataForBackend =
-            items.length > 0
-              ? {
-                  items: items.map((item) => ({
-                    id: item.id,
-                    type: item.type,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity,
-                    addedAt: item.addedAt.toISOString(),
-                    metadata: item.metadata,
-                  })),
-                  totalItems: items.reduce(
-                    (sum, item) => sum + item.quantity,
-                    0
-                  ),
-                  totalPrice: items.reduce(
-                    (sum, item) => sum + item.price * item.quantity,
-                    0
-                  ),
-                }
-              : undefined;
-
           try {
             // Store pending message with cartData
             const pendingData = {
               message: userMsg,
-              cartData: cartDataForBackend,
             };
             sessionStorage.setItem(
               `pending_first_message_${newId}`,
@@ -1516,6 +1473,7 @@ export function Chat({
 
           setIsLoading(true);
           stopRequestedRef.current = false;
+          console.log("new id: ", newId)
           router.push(`/chat/${newId}`);
           return;
         } catch (e) {
@@ -1556,27 +1514,6 @@ export function Chat({
         lastUserMessageRef.current = userMsgId;
       }
 
-      // if (user) {
-      //   fetch("/api/chat/message", {
-      //     method: "POST",
-      //     headers: { "Content-Type": "application/json" },
-      //     body: JSON.stringify({
-      //       chatId: id,
-      //       message: isGroupChat ? { ...userMsg, name: user.id } : userMsg,
-      //     }),
-      //   })
-      //     .then((res) => {
-      //       if (!res.ok) {
-      //         console.error("[Chat] Failed to save user message:", res.status, res.statusText);
-      //       }
-      //     })
-      //     .catch((err) => {
-      //       console.error("[Chat] Failed to save user message:", err);
-      //     });
-      // }
-
-      // Prepare wallet addresses - read directly from adapters for freshness, fallback to context
-      // This ensures we always get the current wallet state, even on first message
       const solanaAddress =
         solanaPublicKey?.toString() || walletAddresses.solana;
       const ethereumAddressValue =
@@ -1588,6 +1525,22 @@ export function Chat({
         solana: solanaAddress || null,
         ethereum: ethereumAddressValue || null,
       };
+
+      console.log("control reached here: ", {
+        chat_id: id,
+        user_id: user?.id,
+        message: {
+          room_id: id,
+          payload: {
+            ...userMessage,
+            wallet_addresses: walletAddressesPayload,
+          },
+        },
+        chat_array: context,
+        is_ai_message: isAiMessage, // true if: not group chat OR has "@ai" prefix
+        is_group_chat: currentIsGroupChat, // Tell backend if this is a group chat (use latest value)
+        wallet_addresses: walletAddressesPayload,
+      })
 
       sendMessage({
         chat_id: id,
@@ -1608,7 +1561,7 @@ export function Chat({
       setInput("");
       setIsLoading(true);
       stopRequestedRef.current = false;
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && id) {
         try {
           localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
           localStorage.removeItem(getPerChatDraftKey(id));

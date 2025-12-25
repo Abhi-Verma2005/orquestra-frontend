@@ -7,7 +7,7 @@
  * and a factory function to get the appropriate renderer for a tool.
  */
 
-import React from "react";
+import * as React from "react";
 
 import { BrowsePublishersRenderer } from "./renderers/browse-publishers-renderer";
 import { CartRenderer } from "./renderers/cart-renderer";
@@ -35,7 +35,6 @@ const toolRendererRegistry: Map<string, ToolRendererComponent> = new Map([
   ["collectPublisherFilters", FiltersRenderer],
   ["getWeather", WeatherRenderer],
   ["get_weather", WeatherRenderer],
-  ["displayOrders", DefaultToolRenderer], // Can be customized later
 ]);
 
 /**
@@ -87,4 +86,3 @@ export function renderTool({
 export * from "./types";
 export * from "./tool-summary-card";
 export * from "./tool-loading-indicator";
-

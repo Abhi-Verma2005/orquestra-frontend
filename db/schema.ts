@@ -9,6 +9,7 @@ import {
   integer,
   boolean,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 
 // Users table - for authentication
@@ -26,7 +27,7 @@ export type User = InferSelectModel<typeof users>;
 export const chat = pgTable("Chat", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   createdAt: timestamp("createdAt").notNull(),
-  messages: json("messages").notNull(),
+  messages: jsonb("messages").notNull(),
   userId: varchar("userId", { length: 255 }).notNull(), // External user ID from external database
   title: varchar("title", { length: 255 }), // Chat title
   summary: varchar("summary", { length: 2000 }), // Summarized older messages
@@ -108,3 +109,21 @@ export const chatInvites = pgTable("ChatInvites", {
 
 export type ChatMember = InferSelectModel<typeof chatMembers>;
 export type ChatInvite = InferSelectModel<typeof chatInvites>;
+
+// Teaching Session State table
+export const sessionState = pgTable("SessionState", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  chatId: uuid("chatId").notNull().references(() => chat.id, { onDelete: 'cascade' }),
+  userId: varchar("userId", { length: 255 }).notNull(),
+  currentStep: varchar("currentStep", { length: 50 }).notNull(),
+  topic: varchar("topic", { length: 255 }),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+}, (table) => ({
+  chatIdIdx: index("sessionState_chatId_idx").on(table.chatId),
+  userIdIdx: index("sessionState_userId_idx").on(table.userId),
+}));
+
+export type SessionStateRow = Omit<InferSelectModel<typeof sessionState>, "state"> & {
+  state: Record<string, unknown>;
+};

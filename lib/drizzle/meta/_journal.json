@@ -5,29 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1728635586378,
-      "tag": "0000_absurd_joshua_kane",
+      "when": 1766561507262,
+      "tag": "0000_pretty_zarda",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1758359631011,
-      "tag": "0001_cuddly_kinsey_walden",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1758359700000,
-      "tag": "0002_manual_schema_update",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1758400000000,
-      "tag": "0003_add_chat_summary_fields",
+      "when": 1766571757455,
+      "tag": "0001_messy_blur",
       "breakpoints": true
     }
   ]

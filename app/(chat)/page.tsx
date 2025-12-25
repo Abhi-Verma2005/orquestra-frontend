@@ -1,7 +1,7 @@
 import React from "react";
 
 import { auth } from "../../app/(auth)/auth";
-import { Chat } from "../../components/custom/chat";
+import { Chat as Landing} from "../../components/custom/Landing";
 import { generateUUID } from "../../lib/utils";
 
 export default async function Page() {
@@ -24,7 +24,7 @@ export default async function Page() {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <Chat key={id} id={id} initialMessages={[]} user={session?.user} />
+      <Landing initialMessages={[]} />
     </>
   );
 }

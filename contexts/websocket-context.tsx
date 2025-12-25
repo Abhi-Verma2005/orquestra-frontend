@@ -141,22 +141,27 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     setState("connecting");
 
+    console.log("State connecting")
+
     try {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
         setState("connected");
+        console.log("State connected")
         reconnectAttemptsRef.current = 0;
 
         // Rejoin current chat if there was one
         if (currentChatIdRef.current && ws.readyState === WebSocket.OPEN) {
+          console.log("State sending message")
           const message: WebSocketMessage = {
             type: MessageType.JoinChat,
             payload: { chat_id: currentChatIdRef.current, user_id: currentUserIdRef.current || undefined },
             timestamp: Date.now(),
             message_id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
           };
+          console.log("sending join chat message: ", message)
           ws.send(JSON.stringify(message));
         }
       };

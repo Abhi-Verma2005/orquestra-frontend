@@ -9,7 +9,9 @@ import { convertToUIMessages } from "@/lib/utils";
 
 export default async function Page({ params }: { params: any }) {
   const { id } = params;
+  console.log('Chat id from params: ', id)
   const chatFromDb = await getChatById({ id });
+
 
   if (!chatFromDb) {
     notFound();
@@ -33,11 +35,15 @@ export default async function Page({ params }: { params: any }) {
     ? (dbMessages as Array<Message>) // Already in Message format, preserve toolInvocations with results
     : convertToUIMessages(dbMessages as Array<CoreMessage>); // Convert from CoreMessage
 
+  console.log(messages)
+
   // type casting and converting messages to UI messages
   const chat: Chat = {
     ...chatFromDb,
     messages,
   };
+
+  console.log(chat)
 
   const session = await auth();
 

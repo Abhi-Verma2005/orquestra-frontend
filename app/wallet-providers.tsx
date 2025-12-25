@@ -1,6 +1,6 @@
 'use client'
 
-import { RainbowKitProvider, connectorsForWallets, getDefaultWallets } from '@rainbow-me/rainbowkit'
+import { RainbowKitProvider } from '@rainbow-me/rainbowkit'
 import '@rainbow-me/rainbowkit/styles.css'
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
@@ -10,43 +10,58 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactNode, useMemo } from 'react'
 import { WagmiProvider, createConfig, http } from 'wagmi'
 import { mainnet } from 'wagmi/chains'
+import { injected } from 'wagmi/connectors'
 
-// Disable Coinbase CDP analytics
+// Disable Coinbase CDP analytics and WalletConnect telemetry
 if (typeof window !== 'undefined') {
   (window as any).DISABLE_CDP_ERROR_REPORTING = true
   ;(window as any).DISABLE_CDP_USAGE_TRACKING = true
+  // Disable WalletConnect analytics
+  ;(window as any).__WALLETCONNECT_DISABLE_ANALYTICS__ = true
+  ;(window as any).__WALLETCONNECT_DISABLE_REMOTE_CONFIG__ = true
 }
 
 const queryClient = new QueryClient()
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'default-project-id'
 const chains = [mainnet] as [typeof mainnet]
 
-const { wallets } = getDefaultWallets({
-  appName: 'Cursorr',
-  projectId,
-})
+// Lazy initialization of wagmi config to prevent SSR issues with IndexedDB
+let wagmiConfig: ReturnType<typeof createConfig> | null = null
 
-// Filter out Coinbase Wallet to prevent analytics calls to cca-lite.coinbase.com.
-// `getDefaultWallets` returns wallet *groups*, and the concrete wallet configs are
-// not strongly typed with an `id` field here, so we use a relaxed type to inspect it.
-const walletsWithoutCoinbase = wallets.filter((walletGroup: any) => {
-  if (!walletGroup?.id) return true; // Keep groups without an id
-  return !walletGroup.id.toLowerCase().includes('coinbase');
-});
+function getWagmiConfig() {
+  if (wagmiConfig) return wagmiConfig
 
-const connectors = connectorsForWallets(walletsWithoutCoinbase, {
-  appName: 'Cursorr',
-  projectId,
-})
+  // Only initialize on client side to avoid IndexedDB access during SSR
+  if (typeof window === 'undefined') {
+    // Return a minimal config for SSR that won't be used
+    wagmiConfig = createConfig({
+      ssr: true,
+      chains,
+      connectors: [],
+      transports: {
+        [mainnet.id]: http(),
+      },
+    })
+    return wagmiConfig
+  }
 
-const wagmiConfig = createConfig({
-  ssr: true,
-  chains,
-  connectors,
-  transports: {
-    [mainnet.id]: http(),
-  },
-})
+  // Use only injected wallet connector to avoid WalletConnect, Coinbase, and other API calls
+  // This prevents external API calls to web3modal, walletconnect, and coinbase analytics
+  const connectors = [
+    injected({}),
+  ]
+
+  wagmiConfig = createConfig({
+    ssr: true,
+    chains,
+    connectors,
+    transports: {
+      [mainnet.id]: http(),
+    },
+  })
+
+  return wagmiConfig
+}
 
 export function WalletProviders({ children }: { children: ReactNode }) {
   const endpoint = useMemo(() => {
@@ -58,8 +73,10 @@ export function WalletProviders({ children }: { children: ReactNode }) {
     [],
   )
 
+  const config = useMemo(() => getWagmiConfig(), [])
+
   return (
-    <WagmiProvider config={wagmiConfig}>
+    <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
           <ConnectionProvider endpoint={endpoint}>

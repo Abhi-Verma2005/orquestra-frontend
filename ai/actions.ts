@@ -16,8 +16,5 @@ export {
 } from "./actions/cart-management";
 
 // Export orders display functions
-export { displayOrdersFunction, ordersDisplayTool } from "./actions/orders-display";
-
 // Export filter collection functions
 export { collectPublisherFilters } from "./actions/collect-filters";
-

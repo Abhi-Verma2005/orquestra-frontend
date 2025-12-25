@@ -14,7 +14,6 @@ import { useCart } from "../../contexts/cart-context";
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import TextShimmer from "../forgeui/text-shimmer";
 import CartManagementResults from "../oms/cart-management-results";
-import { OrdersDisplayResults } from "../oms/orders-display-results";
 import { PublishersResults } from "../publishers/publishers-results";
 import { WalletBalanceRenderer } from "../tools/renderers/wallet-balance-renderer";
 import { ToolInvocationItem } from "../tools/use-tool-invocation";
@@ -200,9 +199,6 @@ export const Message = ({
     switch (toolName) {
       case "getWeather":
         component = <Weather weatherAtLocation={result} />;
-        break;
-      case "displayOrders":
-        component = <OrdersDisplayResults data={result} success={result.success} error={result.error} message={result.message} />;
         break;
       case "browsePublishers":
         component = (
