@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, uuid, varchar, integer, timestamp, unique, json, boolean, index, foreignKey, jsonb } from "drizzle-orm/pg-core"
 
 
@@ -31,7 +32,9 @@ export const users = pgTable("Users", {
 export const chat = pgTable("Chat", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	createdAt: timestamp({ mode: 'string' }).notNull(),
-	messages: jsonb().notNull(),
+	messages: jsonb("messages")
+	.notNull()
+	.default(sql`'[]'::jsonb`),
 	userId: varchar({ length: 255 }).notNull(),
 	title: varchar({ length: 255 }),
 	summary: varchar({ length: 2000 }),

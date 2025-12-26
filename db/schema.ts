@@ -1,5 +1,5 @@
 import { Message } from "ai";
-import { InferSelectModel } from "drizzle-orm";
+import { InferSelectModel, sql } from "drizzle-orm";
 import {
   pgTable,
   varchar,
@@ -27,7 +27,9 @@ export type User = InferSelectModel<typeof users>;
 export const chat = pgTable("Chat", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   createdAt: timestamp("createdAt").notNull(),
-  messages: jsonb("messages").notNull(),
+  messages: jsonb("messages")
+  .notNull()
+  .default(sql`'[]'::jsonb`),
   userId: varchar("userId", { length: 255 }).notNull(), // External user ID from external database
   title: varchar("title", { length: 255 }), // Chat title
   summary: varchar("summary", { length: 2000 }), // Summarized older messages

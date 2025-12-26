@@ -8,7 +8,7 @@ import postgres from "postgres";
 import { chat, chatMembers, chatInvites, users } from "./schema";
 
 // Native database connection
-let client = postgres(`${process.env.POSTGRES_URL!}?sslmode=require`);
+let client = postgres(process.env.POSTGRES_URL || process.env.DATABASE_URL!);
 let db = drizzle(client);
 
 export async function getUser(email: string) {
@@ -476,4 +476,3 @@ export async function redeemInviteCode(inviteCode: string, userId: string) {
     throw error;
   }
 }
-

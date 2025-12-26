@@ -51,6 +51,7 @@ export function Chat({
   } = useWebSocket();
   const wsCtx = useWebSocket();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [hasJoined, setHasJoined] = useState(false);
 
   // Clean up initialMessages: merge empty assistant messages with tool invocations into adjacent messages
   const cleanedInitialMessages = useMemo(() => {
@@ -152,7 +153,7 @@ export function Chat({
   const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(true);
   const [isGroupChat, setIsGroupChat] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
-  const [chatExists, setChatExists] = useState(false);
+  const [chatExists, setChatExists] = useState(!!id);
   const { addresses: walletAddresses } = useWalletAddresses();
   const { publicKey: solanaPublicKey } = useWallet();
   const { address: ethereumAddress, isConnected: isEthConnected } =
@@ -233,19 +234,22 @@ export function Chat({
     }
   }, [id, user]);
 
-  // Join chat on mount - only if chat exists (not on home page with random UUID)
+  // Join chat on mount - only if chat exists
   // Use a ref to track the last joined chat ID to prevent duplicate joins
   const lastJoinedChatIdRef = useRef<string | null>(null);
   useEffect(() => {
-    // Only join if:
-    // 1. Chat exists (loaded from database) OR
-    // 2. We have messages (chat was created)
-    // This prevents joining on home page where id is just a random UUID
-    const shouldJoin = chatExists || messages.length > 0;
+    // We assume if ID is provided, the chat exists (or we should try to join it).
+    // The previous check for chatExists caused a race condition.
+    const shouldJoin = !!id;
+
+    // If not connected, reset the ref so we can join again when connected
+    if (wsState !== "connected") {
+      lastJoinedChatIdRef.current = null;
+      return;
+    }
 
     // Only join if we haven't already joined this chat
     if (
-      wsState === "connected" &&
       shouldJoin &&
       id &&
       lastJoinedChatIdRef.current !== id
@@ -259,22 +263,11 @@ export function Chat({
       joinChat(id, user?.id, userName);
       lastJoinedChatIdRef.current = id;
     }
-
-    return () => {
-      if (shouldJoin && id) {
-        // Reset when leaving
-        if (lastJoinedChatIdRef.current === id) {
-          lastJoinedChatIdRef.current = null;
-        }
-      }
-    };
   }, [
     id,
     wsState,
     joinChat,
-    leaveChat,
     user?.id,
-    chatExists,
     userInfo?.name,
     userInfo?.email,
     user?.email,
@@ -284,7 +277,7 @@ export function Chat({
   // If we navigated after creating a new chat, pick up the pending first message and send it
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (wsState !== "connected") return;
+    if (wsState !== "connected" || !id) return;
     try {
       const key = `pending_first_message_${id}`;
       console.log("id: ", id);
@@ -1527,10 +1520,10 @@ export function Chat({
       };
 
       console.log("control reached here: ", {
-        chat_id: id,
+        chat_id: id!,
         user_id: user?.id,
         message: {
-          room_id: id,
+          room_id: id!,
           payload: {
             ...userMessage,
             wallet_addresses: walletAddressesPayload,
@@ -1543,10 +1536,10 @@ export function Chat({
       })
 
       sendMessage({
-        chat_id: id,
+        chat_id: id!,
         user_id: user?.id,
         message: {
-          room_id: id,
+          room_id: id!,
           payload: {
             ...userMessage,
             wallet_addresses: walletAddressesPayload,
@@ -1634,10 +1627,10 @@ export function Chat({
         };
 
         sendMessage({
-          chat_id: id,
+          chat_id: id!,
           user_id: user?.id,
           message: {
-            room_id: id,
+            room_id: id!,
             payload: {
               role: "user",
               content: newMessage.content,
@@ -1653,7 +1646,9 @@ export function Chat({
         if (typeof window !== "undefined") {
           try {
             localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
-            localStorage.removeItem(getPerChatDraftKey(id));
+            if (id) {
+              localStorage.removeItem(getPerChatDraftKey(id));
+            }
           } catch {}
         }
         setInput("");
@@ -1734,7 +1729,7 @@ export function Chat({
                       }`}
                     >
                       <PreviewMessage
-                        chatId={id}
+                        chatId={id!}
                         role={message.role}
                         content={message.content}
                         attachments={message.experimental_attachments}
@@ -1764,7 +1759,7 @@ export function Chat({
                     Object.keys(streamingContent).length === 0 && (
                       <PreviewMessage
                         key="thinking-placeholder"
-                        chatId={id}
+                        chatId={id!}
                         role="assistant"
                         content=""
                         isGenerating={true}

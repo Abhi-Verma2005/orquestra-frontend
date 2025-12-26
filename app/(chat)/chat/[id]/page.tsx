@@ -26,6 +26,7 @@ export default async function Page({ params }: { params: any }) {
   // CoreMessage format has: role, content (string or array of parts), no id
   const isAlreadyMessageFormat = dbMessages.length > 0 && 
     dbMessages.every(msg => 
+      msg && typeof msg === 'object' &&
       'id' in msg && 
       typeof msg.content === 'string' &&
       'role' in msg
