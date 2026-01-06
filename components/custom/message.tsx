@@ -15,7 +15,6 @@ import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import TextShimmer from "../forgeui/text-shimmer";
 import CartManagementResults from "../oms/cart-management-results";
 import { PublishersResults } from "../publishers/publishers-results";
-import { WalletBalanceRenderer } from "../tools/renderers/wallet-balance-renderer";
 import { ToolInvocationItem } from "../tools/use-tool-invocation";
 
 // Helper function to get dynamic loading text based on active tools
@@ -41,7 +40,6 @@ const getLoadingText = (loadingTools?: Set<string>): string => {
     collectPublisherFilters: "Collecting filters...",
     createExecutionPlan: "Creating plan...",
     updatePlanProgress: "Updating plan...",
-    fetchWalletBalance: "Fetching wallet balance...",
   };
 
   return toolMessages[toolName] || "Thinking...";
@@ -251,9 +249,6 @@ export const Message = ({
             onDoneAddingToCart={handleDoneAddingToCart}
           />
         );
-        break;
-      case "fetchWalletBalance":
-        component = <WalletBalanceRenderer result={result} />;
         break;
       default:
         component = (

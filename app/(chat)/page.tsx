@@ -10,11 +10,11 @@ export default async function Page() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "Web3 Chat",
+    name: "AI Chat",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description:
-      "AI-powered Web3 chat assistant for wallet-aware conversations and collaboration.",
+      "AI-powered chat assistant for smart conversations and collaboration.",
   };
 
   return (

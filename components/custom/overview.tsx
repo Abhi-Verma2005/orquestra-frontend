@@ -20,7 +20,7 @@ export const Overview = () => {
           <MessageIcon />
         </p>
         <p>
-          This is a Web3 Chat assistant powered by AI models
+          This is an AI Chat assistant powered by large language models
           built with Next.js and the AI SDK by Vercel. It uses the{" "}
           <code className="rounded-sm bg-secondary px-1.5 py-0.5 text-secondary-foreground">
             streamText

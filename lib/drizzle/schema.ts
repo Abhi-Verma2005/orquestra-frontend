@@ -1,149 +1,95 @@
-import { sql } from "drizzle-orm";
-import { pgTable, uuid, varchar, integer, timestamp, unique, json, boolean, index, foreignKey, jsonb } from "drizzle-orm/pg-core"
+import { Message } from "ai";
+import { InferSelectModel, sql } from "drizzle-orm";
+import {
+  pgTable,
+  varchar,
+  timestamp,
+  json,
+  uuid,
+  integer,
+  boolean,
+  index,
+  jsonb,
+  text,
+  unique,
+} from "drizzle-orm/pg-core";
 
-
-
-
-
-export const messageEmbeddings = pgTable("MessageEmbeddings", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	messageId: varchar({ length: 255 }).notNull(),
-	pineconeId: varchar({ length: 255 }).notNull(),
-	chunkIndex: integer().default(0).notNull(),
-	hash: varchar({ length: 255 }).notNull(),
-	status: varchar({ length: 50 }).default('ready').notNull(),
-	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-});
-
+// Users table - unchanged
 export const users = pgTable("Users", {
-	id: varchar({ length: 255 }).primaryKey().notNull(),
-	email: varchar({ length: 255 }).notNull(),
-	password: varchar({ length: 255 }).notNull(),
-	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-},
-(table) => {
-	return {
-		usersEmailUnique: unique("Users_email_unique").on(table.email),
-	}
+  id: varchar("id", { length: 255 }).primaryKey().notNull(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  password: varchar("password", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 });
 
+// Chat table - unchanged, messages stay here
 export const chat = pgTable("Chat", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	createdAt: timestamp({ mode: 'string' }).notNull(),
-	messages: jsonb("messages")
-	.notNull()
-	.default(sql`'[]'::jsonb`),
-	userId: varchar({ length: 255 }).notNull(),
-	title: varchar({ length: 255 }),
-	summary: varchar({ length: 2000 }),
-	updatedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	isGroupChat: boolean().default(false).notNull(),
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  createdAt: timestamp("createdAt").notNull(),
+  messages: jsonb("messages").notNull().default(sql`'[]'::jsonb`),
+  userId: varchar("userId", { length: 255 }).notNull(),
+  title: varchar("title", { length: 255 }),
+  summary: varchar("summary", { length: 2000 }),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+  isGroupChat: boolean("isGroupChat").notNull().default(false),
 });
 
-export const chatInvites = pgTable("ChatInvites", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	chatId: uuid().notNull(),
-	inviteCode: varchar({ length: 255 }).notNull(),
-	createdBy: varchar({ length: 255 }).notNull(),
-	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	expiresAt: timestamp({ mode: 'string' }),
-	maxUses: integer(),
-	usedCount: integer().default(0).notNull(),
-},
-(table) => {
-	return {
-		chatInvitesChatIdIdx: index("chatInvites_chatId_idx").using("btree", table.chatId.asc().nullsLast()),
-		chatInvitesInviteCodeIdx: index("chatInvites_inviteCode_idx").using("btree", table.inviteCode.asc().nullsLast()),
-		chatInvitesChatIdChatIdFk: foreignKey({
-			columns: [table.chatId],
-			foreignColumns: [chat.id],
-			name: "ChatInvites_chatId_Chat_id_fk"
-		}).onDelete("cascade"),
-		chatInvitesInviteCodeUnique: unique("ChatInvites_inviteCode_unique").on(table.inviteCode),
-	}
-});
+export const session = pgTable("Session", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  chatId: uuid("chatId").notNull().references(() => chat.id, { onDelete: 'cascade' }),
+  status: varchar("status", { length: 50 }).notNull().default("running"),
+  state: jsonb("state").notNull().default(sql`'{}'::jsonb`),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
+}, (table) => ({
+  chatIdIdx: index("session_chatId_idx").on(table.chatId),
+}));
 
+// Chat Members - unchanged
 export const chatMembers = pgTable("ChatMembers", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	chatId: uuid().notNull(),
-	userId: varchar({ length: 255 }).notNull(),
-	role: varchar({ length: 50 }).default('member').notNull(),
-	joinedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-},
-(table) => {
-	return {
-		chatMembersChatIdIdx: index("chatMembers_chatId_idx").using("btree", table.chatId.asc().nullsLast()),
-		chatMembersChatIdUserIdIdx: index("chatMembers_chatId_userId_idx").using("btree", table.chatId.asc().nullsLast(), table.userId.asc().nullsLast()),
-		chatMembersUserIdIdx: index("chatMembers_userId_idx").using("btree", table.userId.asc().nullsLast()),
-		chatMembersChatIdChatIdFk: foreignKey({
-			columns: [table.chatId],
-			foreignColumns: [chat.id],
-			name: "ChatMembers_chatId_Chat_id_fk"
-		}).onDelete("cascade"),
-	}
+  id: uuid("id").primaryKey().defaultRandom(),
+  chatId: uuid("chatId").notNull().references(() => chat.id, { onDelete: 'cascade' }),
+  userId: varchar("userId", { length: 255 }).notNull(),
+  role: varchar("role", { length: 50 }).notNull().default("member"),
+  joinedAt: timestamp("joinedAt").notNull().defaultNow(),
+}, (table) => ({
+  chatIdIdx: index("chatMembers_chatId_idx").on(table.chatId),
+  userIdIdx: index("chatMembers_userId_idx").on(table.userId),
+  uniqueChatUser: index("chatMembers_chatId_userId_idx").on(table.chatId, table.userId),
+}));
+
+// Chat Invites - unchanged
+export const chatInvites = pgTable("ChatInvites", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  chatId: uuid("chatId").notNull().references(() => chat.id, { onDelete: 'cascade' }),
+  inviteCode: varchar("inviteCode", { length: 255 }).notNull().unique(),
+  createdBy: varchar("createdBy", { length: 255 }).notNull(),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  expiresAt: timestamp("expiresAt"),
+  maxUses: integer("maxUses"),
+  usedCount: integer("usedCount").notNull().default(0),
+}, (table) => ({
+  inviteCodeIdx: index("chatInvites_inviteCode_idx").on(table.inviteCode),
+  chatIdIdx: index("chatInvites_chatId_idx").on(table.chatId),
+}));
+
+// Message Embeddings - unchanged
+export const messageEmbeddings = pgTable("MessageEmbeddings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  messageId: varchar("messageId", { length: 255 }).notNull(),
+  pineconeId: varchar("pineconeId", { length: 255 }).notNull(),
+  chunkIndex: integer("chunkIndex").notNull().default(0),
+  hash: varchar("hash", { length: 255 }).notNull(),
+  status: varchar("status", { length: 50 }).notNull().default("ready"),
+  createdAt: timestamp("createdAt").notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 });
 
-export const executionPlan = pgTable("ExecutionPlan", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	chatId: uuid().notNull(),
-	status: varchar({ length: 50 }).default('active').notNull(),
-	summary: varchar({ length: 500 }),
-	currentStepIndex: integer().default(0).notNull(),
-	totalSteps: integer().notNull(),
-	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-},
-(table) => {
-	return {
-		executionPlanChatIdChatIdFk: foreignKey({
-			columns: [table.chatId],
-			foreignColumns: [chat.id],
-			name: "ExecutionPlan_chatId_Chat_id_fk"
-		}).onDelete("cascade"),
-	}
-});
-
-export const planStep = pgTable("PlanStep", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	planId: uuid().notNull(),
-	stepIndex: integer().notNull(),
-	description: varchar({ length: 500 }).notNull(),
-	toolName: varchar({ length: 100 }).notNull(),
-	status: varchar({ length: 50 }).default('pending').notNull(),
-	result: json(),
-	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	completedAt: timestamp({ mode: 'string' }),
-},
-(table) => {
-	return {
-		planStepPlanIdExecutionPlanIdFk: foreignKey({
-			columns: [table.planId],
-			foreignColumns: [executionPlan.id],
-			name: "PlanStep_planId_ExecutionPlan_id_fk"
-		}).onDelete("cascade"),
-	}
-});
-
-export const sessionState = pgTable("SessionState", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	chatId: uuid().notNull(),
-	userId: varchar({ length: 255 }).notNull(),
-	currentStep: varchar({ length: 50 }).notNull(),
-	topic: varchar({ length: 255 }),
-	state: json().notNull(),
-	createdAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp({ mode: 'string' }).defaultNow().notNull(),
-},
-(table) => {
-	return {
-		sessionStateChatIdIdx: index("sessionState_chatId_idx").using("btree", table.chatId.asc().nullsLast()),
-		sessionStateUserIdIdx: index("sessionState_userId_idx").using("btree", table.userId.asc().nullsLast()),
-		sessionStateChatIdChatIdFk: foreignKey({
-			columns: [table.chatId],
-			foreignColumns: [chat.id],
-			name: "SessionState_chatId_Chat_id_fk"
-		}).onDelete("cascade"),
-	}
-});
+export type User = InferSelectModel<typeof users>;
+export type Chat = Omit<InferSelectModel<typeof chat>, "messages"> & {
+  messages: Array<Message>;
+};
+export type Session = InferSelectModel<typeof session>;
+export type ChatMember = InferSelectModel<typeof chatMembers>;
+export type ChatInvite = InferSelectModel<typeof chatInvites>;

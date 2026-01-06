@@ -39,8 +39,15 @@ export enum MessageType {
   UserJoined = "user_joined",
   UserLeft = "user_left",
   OpenSidebar = "open_sidebar",
-  WalletData = "wallet_data",
   IntentDetected = "intent_detected",
+  LlmThought = "llm_thought",
+  LlmAction = "llm_action",
+  ProgressUpdate = "progress_update",
+  UiStateChange = "ui_state_change",
+}
+
+export enum FunctionName {
+  RenderCheatSheet = "render_cheat_sheet",
 }
 
 export interface WebSocketMessage {
@@ -75,21 +82,11 @@ export interface SendMessageData {
       role: "user" | "assistant" | "system" | "function";
       content: string;
       name?: string;
-      // Also embed wallet addresses in the payload for robustness/debugging.
-      wallet_addresses?: {
-        solana: string | null;
-        ethereum: string | null;
-      };
     };
   };
   chat_array?: Message[];
   is_ai_message?: boolean; // Optional hint from frontend, backend will verify
   is_group_chat?: boolean; // Tell backend if this is a group chat
-  // Top-level wallet addresses so the backend can easily persist them per-connection.
-  wallet_addresses?: {
-    solana: string | null;
-    ethereum: string | null;
-  };
 }
 
 export interface ChatMessage {
@@ -117,7 +114,7 @@ const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
 
 // WebSocket URL for chat WebSocket server (port 8080, root path)
 // Format: ws://host:port/ or wss://host:port/ for production
-const WS_URL = process.env.NEXT_PUBLIC_CHAT_WS_URL || "ws://localhost:8080/";
+const WS_URL = process.env.NEXT_PUBLIC_CHAT_WS_URL || "ws://localhost:8000/";
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 

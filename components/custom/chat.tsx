@@ -1,15 +1,14 @@
 "use client";
 
-import { useWallet } from "@solana/wallet-adapter-react";
 import { Attachment, Message, ToolInvocation } from "ai";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { useAccount } from "wagmi";
 
 import { ChatMembers } from "./chat-members";
 import { InviteLinkDialog } from "./invite-link-dialog";
 import { LeftSidebar } from "./left-sidebar";
+import { Markdown } from "./markdown";
 import { Message as PreviewMessage } from "./message";
 import { MultimodalInput } from "./multimodal-input";
 import { RightPanel } from "./RightPanel";
@@ -19,13 +18,12 @@ import {
 import { useCart } from "../../contexts/cart-context";
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import { useUserInfo } from "../../contexts/UserInfoProvider";
-import { useWalletAddresses } from "../../contexts/wallet-context";
 import {
   useWebSocket,
   MessageType,
   ChatMessage,
+  FunctionName,
 } from "../../contexts/websocket-context";
-import { WalletProfile } from "../wallet/wallet-profile";
 const getPerChatDraftKey = (chatId: string) => `chat_draft_${chatId}`;
 const NEW_CHAT_DRAFT_KEY = `chat_draft_new`;
 
@@ -154,10 +152,6 @@ export function Chat({
   const [isGroupChat, setIsGroupChat] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [chatExists, setChatExists] = useState(!!id);
-  const { addresses: walletAddresses } = useWalletAddresses();
-  const { publicKey: solanaPublicKey } = useWallet();
-  const { address: ethereumAddress, isConnected: isEthConnected } =
-    useAccount();
   useEffect(() => {
     if (typeof window !== "undefined" && id) {
       try {
@@ -280,7 +274,6 @@ export function Chat({
     if (wsState !== "connected" || !id) return;
     try {
       const key = `pending_first_message_${id}`;
-      console.log("id: ", id);
       const raw = sessionStorage.getItem(key);
       if (!raw) return;
       const parsed = JSON.parse(raw);
@@ -291,9 +284,11 @@ export function Chat({
       if (parsed.message) {
         // New format: { message: Message, cartData?: any }
         pending = parsed.message;
+        setMessages((prev) => [...prev, parsed.message])
       } else {
         // Old format: just Message
         pending = parsed as Message;
+        setMessages((prev) => [...prev, parsed])
       }
       // Send via WebSocket; UI likely already shows this message from DB
       if (pending?.content) {
@@ -710,6 +705,26 @@ export function Chat({
           requestId?: string;
           role?: string;
         };
+
+        // Handle specific function names
+        if (data.name === FunctionName.RenderCheatSheet) {
+          const { title, content } = data.args as {
+            title: string;
+            content: string;
+          };
+          setRightPanelContent(
+            <div className="flex flex-col h-full bg-[#121212]">
+              <div className="p-6 overflow-y-auto">
+                <h1 className="text-2xl font-bold mb-6 text-[#E0E0E0] border-b border-[#333333] pb-4">
+                  {title}
+                </h1>
+                <div className="prose prose-invert max-w-none">
+                  <Markdown>{content}</Markdown>
+                </div>
+              </div>
+            </div>
+          );
+        }
 
         // Add function call as a tool invocation in the last assistant message
         setMessages((prev) => {
@@ -1507,34 +1522,6 @@ export function Chat({
         lastUserMessageRef.current = userMsgId;
       }
 
-      const solanaAddress =
-        solanaPublicKey?.toString() || walletAddresses.solana;
-      const ethereumAddressValue =
-        isEthConnected && ethereumAddress
-          ? ethereumAddress
-          : walletAddresses.ethereum;
-
-      const walletAddressesPayload = {
-        solana: solanaAddress || null,
-        ethereum: ethereumAddressValue || null,
-      };
-
-      console.log("control reached here: ", {
-        chat_id: id!,
-        user_id: user?.id,
-        message: {
-          room_id: id!,
-          payload: {
-            ...userMessage,
-            wallet_addresses: walletAddressesPayload,
-          },
-        },
-        chat_array: context,
-        is_ai_message: isAiMessage, // true if: not group chat OR has "@ai" prefix
-        is_group_chat: currentIsGroupChat, // Tell backend if this is a group chat (use latest value)
-        wallet_addresses: walletAddressesPayload,
-      })
-
       sendMessage({
         chat_id: id!,
         user_id: user?.id,
@@ -1542,13 +1529,11 @@ export function Chat({
           room_id: id!,
           payload: {
             ...userMessage,
-            wallet_addresses: walletAddressesPayload,
           },
         },
         chat_array: context,
         is_ai_message: isAiMessage, // true if: not group chat OR has "@ai" prefix
         is_group_chat: currentIsGroupChat, // Tell backend if this is a group chat (use latest value)
-        wallet_addresses: walletAddressesPayload,
       });
 
       setInput("");
@@ -1572,10 +1557,6 @@ export function Chat({
       messages.length,
       router,
       cartState.items,
-      walletAddresses,
-      solanaPublicKey,
-      ethereumAddress,
-      isEthConnected,
     ]
   );
 
@@ -1613,19 +1594,6 @@ export function Chat({
         wsState === "connected" &&
         newMessage.content
       ) {
-        // Prepare wallet addresses for quick-append messages as well
-        const solanaAddress =
-          solanaPublicKey?.toString() || walletAddresses.solana;
-        const ethereumAddressValue =
-          isEthConnected && ethereumAddress
-            ? ethereumAddress
-            : walletAddresses.ethereum;
-
-        const walletAddressesPayload = {
-          solana: solanaAddress || null,
-          ethereum: ethereumAddressValue || null,
-        };
-
         sendMessage({
           chat_id: id!,
           user_id: user?.id,
@@ -1634,10 +1602,8 @@ export function Chat({
             payload: {
               role: "user",
               content: newMessage.content,
-              wallet_addresses: walletAddressesPayload,
             },
           },
-          wallet_addresses: walletAddressesPayload,
         });
         setIsLoading(true);
         stopRequestedRef.current = false;
@@ -1661,10 +1627,6 @@ export function Chat({
       id,
       sendMessage,
       scrollToMessage,
-      walletAddresses,
-      solanaPublicKey,
-      ethereumAddress,
-      isEthConnected,
       user?.id,
     ]
   );
@@ -1697,10 +1659,9 @@ export function Chat({
                   : "justify-between"
               }`}
             >
-              {/* Invite button and wallet profile - show in existing chats (when id exists), not on home page */}
+              {/* Invite button and other chat actions - show in existing chats (when id exists), not on home page */}
               {id && (
                 <div className="absolute top-8 md:top-10 right-4 z-20 flex items-center gap-2">
-                  <WalletProfile />
                   <InviteLinkDialog chatId={id} />
                   {/* Show members list only if it's a group chat */}
                   {isGroupChat && user && (

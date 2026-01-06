@@ -30,11 +30,11 @@ export async function GET(request: Request) {
         greeting: z.string(),
         subtitle: z.string()
       }),
-      prompt: `You are crafting a compact hero heading for a Web3 chat application that is AI powered and wallet-aware.
+      prompt: `You are crafting a compact hero heading for an AI-powered chat application.
 Return two fields:
-- greeting: a creative, brand-friendly THREE-WORD title (Title Case, no punctuation/emojis) tuned for time bucket ${timeBucket}, emphasizing "Web3" and "Chat".
-- subtitle: a concise 6-10 word supporting line that highlights AI-powered Web3 conversations, wallet awareness, and on-chain context.
-Keep both friendly, welcoming, and clearly Web3-focused.`,
+- greeting: a creative, brand-friendly THREE-WORD title (Title Case, no punctuation/emojis) tuned for time bucket ${timeBucket}, emphasizing "AI" and "Chat".
+- subtitle: a concise 6-10 word supporting line that highlights AI-powered conversations and smart assistance.
+Keep both friendly, welcoming, and clearly focused on AI assistance.`,
       temperature: 0.7,
     });
 

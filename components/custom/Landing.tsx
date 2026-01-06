@@ -1,14 +1,11 @@
 "use client";
 
-import { useWallet } from "@solana/wallet-adapter-react";
 import { Attachment, Message } from "ai";
 import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useAccount } from "wagmi";
 
 import { MultimodalInput } from "./multimodal-input";
 import { useUserInfo } from "../../contexts/UserInfoProvider";
-import { useWalletAddresses } from "../../contexts/wallet-context";
 import { useWebSocket, MessageType } from "../../contexts/websocket-context";
 
 const NEW_CHAT_DRAFT_KEY = `chat_draft_new`;
@@ -29,10 +26,6 @@ export function Chat({
   const saveDraftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   
-  const { addresses: walletAddresses } = useWalletAddresses();
-  const { publicKey: solanaPublicKey } = useWallet();
-  const { address: ethereumAddress, isConnected: isEthConnected } = useAccount();
-
   // Restore draft from localStorage on mount
   useEffect(() => {
     if (typeof window !== "undefined" && messages.length === 0) {
