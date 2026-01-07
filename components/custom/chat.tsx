@@ -129,13 +129,17 @@ export function Chat({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const saveDraftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [streamingContent, setStreamingContent] = useState<{
-    [messageId: string]: string;
-  }>({});
   const [loadingTools, setLoadingTools] = useState<Set<string>>(new Set());
   const currentAssistantMessageIdRef = useRef<string | null>(null);
+  const streamingContentRef = useRef<string>("");
   const stopRequestedRef = useRef(false);
   const lastUserMessageRef = useRef<string | null>(null);
+
+  // Helper function to reset streaming state
+  const resetStreamingState = useCallback(() => {
+    currentAssistantMessageIdRef.current = null;
+    streamingContentRef.current = "";
+  }, []);
   const lastMessageId = useMemo(() => {
     if (messages.length === 0) return undefined;
     return messages[messages.length - 1].id;
@@ -327,19 +331,38 @@ export function Chat({
     const unsubscribeTextStream = onEvent(
       MessageType.TextStream,
       (payload: unknown) => {
-        const data = payload as { text: string; isComplete?: boolean };
-        if (data.text) {
+        const chunk = typeof payload === 'string' 
+          ? payload 
+          : ((payload as any).content || (payload as any).text || (payload as any).chunk || "");
+        
+        if (chunk) {
           setIsLoading(true);
-          const messageId =
-            currentAssistantMessageIdRef.current || `stream_${Date.now()}`;
+          
           if (!currentAssistantMessageIdRef.current) {
+            // FIRST CHUNK: Create new assistant message
+            const messageId = `stream_${Date.now()}`;
             currentAssistantMessageIdRef.current = messageId;
+            streamingContentRef.current = chunk;
+            
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: messageId,
+                role: "assistant",
+                content: chunk,
+              },
+            ]);
+          } else {
+            // SUBSEQUENT CHUNKS: Update existing message
+            const messageId = currentAssistantMessageIdRef.current;
+            streamingContentRef.current += chunk;
+            
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === messageId ? { ...msg, content: streamingContentRef.current } : msg
+              )
+            );
           }
-
-          setStreamingContent((prev) => ({
-            ...prev,
-            [messageId]: (prev[messageId] || "") + data.text,
-          }));
         }
       }
     );
@@ -348,84 +371,33 @@ export function Chat({
     const unsubscribeTextStreamEnd = onEvent(
       MessageType.TextStreamEnd,
       (payload: unknown) => {
-        const data = payload as { text?: string };
         setIsLoading(false);
+
         if (currentAssistantMessageIdRef.current) {
           const messageId = currentAssistantMessageIdRef.current;
-          const content = data.text || streamingContent[messageId] || "";
+          const finalContent = typeof payload === 'string'
+            ? payload
+            : ((payload as any)?.content || (payload as any)?.text || streamingContentRef.current);
 
           setMessages((prev) => {
-            // Check if assistant message already exists
             const existingIndex = prev.findIndex(
               (m) => m.id === messageId && m.role === "assistant"
             );
 
-            let updatedMessages: Array<Message>;
-
             if (existingIndex >= 0) {
-              // Update existing message
-              updatedMessages = [...prev];
-              updatedMessages[existingIndex] = {
-                ...updatedMessages[existingIndex],
-                content,
+              const updated = [...prev];
+              updated[existingIndex] = {
+                ...updated[existingIndex],
+                content: finalContent,
               };
-            } else {
-              // Add new assistant message
-              updatedMessages = [
-                ...prev,
-                {
-                  id: messageId,
-                  role: "assistant",
-                  content,
-                },
-              ];
+              return updated;
             }
-
-            // Save to database immediately
-            if (user) {
-              const assistantMessage =
-                updatedMessages[
-                  existingIndex >= 0
-                    ? existingIndex
-                    : updatedMessages.length - 1
-                ];
-              // fetch("/api/chat/message", {
-              //   method: "POST",
-              //   headers: { "Content-Type": "application/json" },
-              //   body: JSON.stringify({
-              //     chatId: id,
-              //     message: assistantMessage,
-              //   }),
-              // })
-              //   .then((res) => {
-              //     if (!res.ok) {
-              //       console.error(
-              //         "[Chat] Failed to save assistant message:",
-              //         res.status,
-              //         res.statusText
-              //       );
-              //     }
-              //   })
-              //   .catch((err) => {
-              //     console.error(
-              //       "[Chat] Failed to save assistant message:",
-              //       err
-              //     );
-              //   });
-            }
-
-            return updatedMessages;
+            return prev;
           });
-
-          // Clear streaming content
-          setStreamingContent((prev) => {
-            const updated = { ...prev };
-            delete updated[messageId];
-            return updated;
-          });
-
-          currentAssistantMessageIdRef.current = null;
         }
+
+        // Reset streaming state (always reset, even if no current message)
+        resetStreamingState();
       }
     );
 
@@ -1338,7 +1310,6 @@ export function Chat({
     };
   }, [
     onEvent,
-    streamingContent,
     id,
     user,
     cartState.items,
@@ -1346,38 +1317,9 @@ export function Chat({
     setRightPanelContent,
     setMessages,
     setLoadingTools,
+    chatExists,
+    resetStreamingState,
   ]);
-
-  // Update messages when streaming content changes
-  useEffect(() => {
-    Object.entries(streamingContent).forEach(([messageId, content]) => {
-      if (content) {
-        setMessages((prev) => {
-          const existingIndex = prev.findIndex(
-            (m) => m.id === messageId && m.role === "assistant"
-          );
-
-          if (existingIndex >= 0) {
-            const updated = [...prev];
-            updated[existingIndex] = {
-              ...updated[existingIndex],
-              content,
-            };
-            return updated;
-          } else {
-            return [
-              ...prev,
-              {
-                id: messageId,
-                role: "assistant",
-                content,
-              },
-            ];
-          }
-        });
-      }
-    });
-  }, [streamingContent]);
 
   // Handle form submission
   const handleSubmit = useCallback(
@@ -1522,6 +1464,9 @@ export function Chat({
         lastUserMessageRef.current = userMsgId;
       }
 
+      // Reset streaming state before sending new message (defensive cleanup)
+      resetStreamingState();
+
       sendMessage({
         chat_id: id!,
         user_id: user?.id,
@@ -1557,6 +1502,8 @@ export function Chat({
       messages.length,
       router,
       cartState.items,
+      isGroupChat,
+      resetStreamingState,
     ]
   );
 
@@ -1717,7 +1664,7 @@ export function Chat({
                   {isLoading &&
                     (messages.length === 0 ||
                       messages[messages.length - 1]?.role === "user") &&
-                    Object.keys(streamingContent).length === 0 && (
+                    !streamingContentRef.current && (
                       <PreviewMessage
                         key="thinking-placeholder"
                         chatId={id!}
