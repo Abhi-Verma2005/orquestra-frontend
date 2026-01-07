@@ -36,12 +36,12 @@ if (typeof globalThis !== "undefined" && !("indexedDB" in globalThis)) {
       const request = createMockRequest();
       // Immediately set error state
       (request as any).readyState = "done";
-      return request as IDBOpenDBRequest;
+      return request as unknown as IDBOpenDBRequest;
     },
     deleteDatabase: (name: string) => {
       const request = createMockRequest();
       (request as any).readyState = "done";
-      return request as IDBOpenDBRequest;
+      return request as unknown as IDBOpenDBRequest;
     },
     cmp: (first: any, second: any) => 0,
     databases: () => Promise.resolve([]),
