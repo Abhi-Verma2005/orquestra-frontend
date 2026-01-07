@@ -6,7 +6,7 @@ import { redeemInviteCode } from "@/db/queries";
 // POST /api/chat/invite/[code]/join - Join chat via invite code
 export async function POST(
   request: NextRequest,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
   const session = await auth();
 
@@ -15,7 +15,7 @@ export async function POST(
   }
 
   try {
-    const { code } = params;
+    const { code } = await params;
 
     if (!code) {
       return NextResponse.json({ error: "Invite code is required" }, { status: 400 });

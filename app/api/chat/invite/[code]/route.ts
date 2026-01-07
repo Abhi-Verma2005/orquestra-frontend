@@ -5,10 +5,10 @@ import { getChatInviteByCode } from "@/db/queries";
 // GET /api/chat/invite/[code] - Get invite details (public, no auth)
 export async function GET(
   request: NextRequest,
-  { params }: { params: { code: string } }
+  { params }: { params: Promise<{ code: string }> }
 ) {
   try {
-    const { code } = params;
+    const { code } = await params;
 
     if (!code) {
       return NextResponse.json({ error: "Invite code is required" }, { status: 400 });

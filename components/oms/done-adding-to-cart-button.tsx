@@ -35,7 +35,7 @@ export default function DoneAddingToCartButton({
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
-            <ShoppingCart className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+            <ShoppingCart className="size-5 text-violet-600 dark:text-violet-400" />
           </div>
           <div>
             <h4 className="font-semibold text-gray-900 dark:text-gray-100">
@@ -60,9 +60,9 @@ export default function DoneAddingToCartButton({
           className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-2"
         >
           {isLoading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Loader2 className="size-4 mr-2 animate-spin" />
           ) : (
-            <CheckCircle className="h-4 w-4 mr-2" />
+            <CheckCircle className="size-4 mr-2" />
           )}
           {isLoading ? "Processing..." : "Done Adding to Cart"}
         </Button>
