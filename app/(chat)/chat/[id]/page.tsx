@@ -14,6 +14,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
 
 
   if (!chatFromDb) {
+    console.log(`[DEBUG] Chat not found in DB for ID: ${id}`);
     notFound();
   }
 
@@ -49,12 +50,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const session = await auth();
 
   if (!session || !session.user || !session.user.id) {
+    console.log(`[DEBUG] No session or user found for chat ID: ${chat.id}`);
     return notFound();
   }
 
   // Check if user is owner OR member
   const hasAccess = await isUserInChat(chat.id, session.user.id);
   if (!hasAccess) {
+    console.log(`[DEBUG] User ${session.user.id} does not have access to chat ID: ${chat.id}`);
     return notFound();
   }
 

@@ -15,6 +15,9 @@ export const authConfig = {
       let isOnChat = nextUrl.pathname.startsWith("/");
       let isOnRegister = nextUrl.pathname.startsWith("/register");
       let isOnLogin = nextUrl.pathname.startsWith("/login");
+      let isChatId = nextUrl.pathname.startsWith("/chat/");
+
+      console.log(`[AUTH] Path: ${nextUrl.pathname}, LoggedIn: ${isLoggedIn}, isChatId: ${isChatId}`);
 
       if (isLoggedIn && (isOnLogin || isOnRegister)) {
         return Response.redirect(new URL("/", nextUrl));
@@ -24,8 +27,9 @@ export const authConfig = {
         return true; // Always allow access to register and login pages
       }
 
-      if (isOnChat) {
+      if (isChatId || isOnChat) {
         if (isLoggedIn) return true;
+        console.log(`[AUTH] Redirecting unauthenticated user from ${nextUrl.pathname} to /login`);
         return false; // Redirect unauthenticated users to login page
       }
 

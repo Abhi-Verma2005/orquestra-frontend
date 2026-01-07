@@ -106,7 +106,6 @@ export async function saveChat({
     // Optimistic approach: try insert first (faster for new chats)
     // If it fails due to duplicate key (race condition), fall back to update
     try {
-
       const inserted = await db.insert(chat).values({
         id,
         createdAt: now,
@@ -117,12 +116,8 @@ export async function saveChat({
         summary: summary || null,
       }).returning();
 
-      console.log(inserted)
-
-
       return inserted;
     } catch (insertError: any) {
-
       // Check if it's a duplicate key error (PostgreSQL error code 23505)
       const isDuplicateKey = 
         insertError?.code === '23505' ||
@@ -133,12 +128,11 @@ export async function saveChat({
 
       if (isDuplicateKey) {
         // Chat was created by another request (race condition), update instead
-
         const updated = await db
           .update(chat)
           .set(updateData)
-          .where(eq(chat.id, id));
-
+          .where(eq(chat.id, id))
+          .returning();
 
         return updated;
       }
@@ -230,10 +224,10 @@ export async function getChatsByUserId({ id }: { id: string }) {
 
 export async function getChatById({ id }: { id: string }) {
   try {
-    const [selectedChat] = await db.select().from(chat).where(eq(chat.id, id));
-    return selectedChat;
+    const selectedChat = await db.select().from(chat).where(eq(chat.id, id));
+    return selectedChat[0];
   } catch (error) {
-    console.error("Failed to get chat by id from database");
+    console.error(`[DB] Error fetching chat ${id}:`, error);
     throw error;
   }
 }
