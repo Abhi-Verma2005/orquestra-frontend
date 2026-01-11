@@ -1,8 +1,7 @@
 import React from "react";
-
-import { auth } from "../../app/(auth)/auth";
-import { Chat as Landing} from "../../components/custom/Landing";
-import { generateUUID } from "../../lib/utils";
+import { auth } from "@/app/(auth)/auth";
+import { ChatContainer } from "@/features/chat";
+import { generateUUID } from "@/lib/utils";
 
 export default async function Page() {
   const id = generateUUID();
@@ -21,10 +20,9 @@ export default async function Page() {
     <>
       <script
         type="application/ld+json"
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <Landing initialMessages={[]} />
+      <ChatContainer id={null} initialMessages={[]} user={session?.user} />
     </>
   );
 }

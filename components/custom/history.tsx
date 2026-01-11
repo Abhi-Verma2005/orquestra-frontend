@@ -42,12 +42,12 @@ type SortOption = "newest" | "oldest" | "title-asc" | "title-desc" | "recent-act
 // Filter options
 type FilterOption = "all" | "group" | "individual";
 
-export const History = ({ 
-  user, 
-  isCollapsed = false, 
-  onItemClick 
-}: { 
-  user: User | undefined; 
+export const History = ({
+  user,
+  isCollapsed = false,
+  onItemClick
+}: {
+  user: User | undefined;
   isCollapsed?: boolean;
   onItemClick?: () => void;
 }) => {
@@ -92,7 +92,7 @@ export const History = ({
           .map((msg) => (typeof msg.content === "string" ? msg.content : ""))
           .join(" ")
           .toLowerCase();
-        
+
         return (
           title.includes(query) ||
           summary.includes(query) ||
@@ -172,7 +172,7 @@ export const History = ({
             className="w-full font-normal text-sm flex flex-row justify-between text-white"
             asChild
           >
-            <Link href="/" onClick={onItemClick}>
+            <Link href="/chat" onClick={onItemClick}>
               <div>Start a new chat</div>
               <PencilEditIcon size={14} />
             </Link>
@@ -235,9 +235,9 @@ export const History = ({
                   >
                     Sort: {
                       sortOption === "newest" ? "Newest" :
-                      sortOption === "oldest" ? "Oldest" :
-                      sortOption === "recent-activity" ? "Recent" :
-                      sortOption === "title-asc" ? "A-Z" : "Z-A"
+                        sortOption === "oldest" ? "Oldest" :
+                          sortOption === "recent-activity" ? "Recent" :
+                            sortOption === "title-asc" ? "A-Z" : "Z-A"
                     }
                   </Button>
                 </DropdownMenuTrigger>

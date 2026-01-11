@@ -17,7 +17,7 @@ export function MarketplaceHero() {
                 </div>
 
                 <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-4 text-foreground animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
-                    AntiGravity Marketplace
+                    Orq Marketplace
                 </h1>
                 <p className="text-lg text-muted-foreground max-w-2xl mb-8 animate-in fade-in slide-in-from-bottom-5 duration-700 delay-200">
                     Explore tailored prompts, agent skills, and full workflows to supercharge your development.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { SlashIcon, PlusIcon } from "lucide-react";
+import { SlashIcon, PlusIcon, ShoppingBag } from "lucide-react";
 import { useState } from "react";
 import { User } from "next-auth";
 
@@ -31,7 +31,7 @@ export function SidebarPanel({ user, isCollapsed }: SidebarPanelProps) {
                 {!isCollapsed ? (
                     <div className="flex items-center gap-2">
                         <Logo href="/" size={24} />
-                        <span className="font-semibold text-lg tracking-tight">AntiGravity</span>
+                        <span className="font-semibold text-lg tracking-tight">Orq</span>
                     </div>
                 ) : (
                     <Logo href="/" size={24} />
@@ -39,15 +39,25 @@ export function SidebarPanel({ user, isCollapsed }: SidebarPanelProps) {
             </div>
 
             {/* New Chat Button */}
-            <div className="p-3">
+            <div className="px-3 pb-2 flex flex-col gap-2">
                 <Button
                     className={cn("w-full justify-start gap-2", isCollapsed && "justify-center px-0")}
                     variant="outline"
                     asChild
                 >
-                    <Link href="/">
+                    <Link href="/chat">
                         <PlusIcon className="size-4" />
                         {!isCollapsed && <span>New Chat</span>}
+                    </Link>
+                </Button>
+                <Button
+                    className={cn("w-full justify-start gap-2", isCollapsed && "justify-center px-0 text-muted-foreground")}
+                    variant="ghost"
+                    asChild
+                >
+                    <Link href="/marketplace">
+                        <ShoppingBag className="size-4" />
+                        {!isCollapsed && <span>Marketplace</span>}
                     </Link>
                 </Button>
             </div>
