@@ -5,17 +5,20 @@ import { motion } from "framer-motion";
 import { ThumbsUp, ThumbsDown, Copy, RotateCcw, ChevronDown } from "lucide-react";
 import { ReactNode, useEffect, useRef, useCallback, useMemo, useState } from "react";
 
-import { BotIcon, UserIcon } from "./icons";
-import Logo from "./logo";
-import { Markdown } from "./markdown";
-import { PreviewAttachment } from "./preview-attachment";
-import { Weather } from "./weather";
-import { useCart } from "../../contexts/cart-context";
-import { useSplitScreen } from "../../contexts/SplitScreenProvider";
-import TextShimmer from "../forgeui/text-shimmer";
-import CartManagementResults from "../oms/cart-management-results";
-import { PublishersResults } from "../publishers/publishers-results";
-import { ToolInvocationItem } from "../tools/use-tool-invocation";
+import { BotIcon, UserIcon } from "@/components/custom/icons";
+import Logo from "@/components/custom/logo";
+import { Markdown } from "./Markdown";
+import { PreviewAttachment } from "@/components/custom/preview-attachment";
+import { Weather } from "@/components/custom/weather";
+import { useCart } from "@/contexts/cart-context";
+import { useSplitScreen } from "@/contexts/SplitScreenProvider";
+import { useChatUIState } from "@/contexts/chat-ui-state-context";
+import TextShimmer from "@/components/forgeui/text-shimmer";
+import CartManagementResults from "@/components/oms/cart-management-results";
+import { PublishersResults } from "@/components/publishers/publishers-results";
+import { ToolInvocationItem } from "@/components/tools/use-tool-invocation";
+import { ToolSummaryCard } from "@/components/tools";
+import { ToolInvocationCard } from "./ToolInvocationCard";
 
 // Helper function to get dynamic loading text based on active tools
 const getLoadingText = (loadingTools?: Set<string>): string => {
@@ -76,11 +79,26 @@ export const Message = ({
 }) => {
   const { setRightPanelContent, closeRightPanel } = useSplitScreen();
   const { addItem, removeItem, getCartItemIds, state: cartState, clearCart } = useCart();
+
+  // Use centralized UI state for real-time streaming updates (only for last message)
+  const {
+    isThinking,
+    isExecutingTool,
+    executingTools,
+    toolInvocations: realtimeToolInvocations,
+    uiState,
+  } = useChatUIState();
+
   const processedToolCalls = useRef<Set<string>>(new Set());
   const openedToolCalls = useRef<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
-  
+
+  // Determine actual state: use context state for last message, props for historical messages
+  const actualIsGenerating = isLastMessage ? (isThinking || isExecutingTool || isGenerating) : isGenerating;
+  const actualLoadingTools = isLastMessage ? executingTools : loadingTools;
+
+
   // Filter collection state
   const [collectedFilters, setCollectedFilters] = useState<{
     priceRange?: { min: number; max: number };
@@ -264,10 +282,7 @@ export const Message = ({
     if (component) {
       // Wrap with a key to force remount when switching from loading -> result
       const wrapped = <div key={key || `${toolName}-content`}>{component}</div>;
-      console.log('🚀 Opening sidebar with content for tool:', toolName);
       setRightPanelContent(wrapped);
-    } else {
-      console.log('❌ No component created for tool:', toolName, 'result:', result);
     }
   }, [setRightPanelContent, addItem, removeItem, getCartItemIds, handleDoneAddingToCart, closeRightPanel]);
 
@@ -290,7 +305,6 @@ export const Message = ({
 
       // When the tool returns a result, open the sidebar and show the content
       if (state === "result" && !processedToolCalls.current.has(toolCallId)) {
-        console.log('🔧 Tool call completed:', { toolName, toolCallId, state, result: toolInvocation.result });
         const { result } = toolInvocation as any;
         
         // Handle collectPublisherFilters inline (embedded), don't open sidebar
@@ -313,7 +327,7 @@ export const Message = ({
       animate={{ y: 0, opacity: 1 }}
     >
       <div className={`size-[24px] border border-border rounded-sm p-1 flex flex-col justify-center items-center shrink-0 text-muted-foreground relative ${
-        role === "assistant" && isGenerating ? 'animate-[stream-pulse_2s_ease-in-out_infinite]' : ''
+        role === "assistant" && actualIsGenerating ? 'animate-[stream-pulse_2s_ease-in-out_infinite]' : ''
       }`}>
         {role === "assistant" ? (
           <Logo href="#" size={16} />
@@ -353,22 +367,110 @@ export const Message = ({
         )}
         
         {/* Show dynamic shimmer when generating but no content yet */}
-        {role === "assistant" && isGenerating && (!content || (typeof content === "string" && content.trim() === "")) && (
-          <div className="text-foreground">
-            <TextShimmer className="text-sm" duration={1.5} repeatDelay={0.5}>
-              {getLoadingText(loadingTools)}
-            </TextShimmer>
+        {role === "assistant" && actualIsGenerating && (!content || (typeof content === "string" && content.trim() === "")) && (
+          <div className="w-full max-w-sm mb-4">
+            <ToolSummaryCard
+              title={getLoadingText(actualLoadingTools)}
+              loading={true}
+            >
+              <TextShimmer className="text-xs" duration={1.5} repeatDelay={0.5}>
+                Processing your request...
+              </TextShimmer>
+            </ToolSummaryCard>
           </div>
         )}
+
+        {/* Tool Invocations - Show real-time for last message, historical for others - Show BEFORE content */}
+        {(() => {
+          // For the last message during streaming, show real-time invocations from context
+          if (isLastMessage && role === "assistant" && realtimeToolInvocations.length > 0) {
+            return (
+              <div className="flex flex-col gap-3 mb-4">
+                {realtimeToolInvocations.map((invocation) => (
+                  <ToolInvocationCard key={invocation.id} invocation={invocation} />
+                ))}
+              </div>
+            );
+          }
+
+          // For historical messages or completed messages, show saved tool invocations
+          if (toolInvocations && toolInvocations.length > 0) {
+            return (
+              <div className="flex flex-col gap-3 mb-4">
+                {toolInvocations.map((toolInvocation) => {
+                  const { toolName } = toolInvocation;
+                  const isLoading = loadingTools?.has(toolName) ?? false;
+
+                  // Tools that need special interactive handlers (use old ToolInvocationItem)
+                  const needsSpecialHandling = [
+                    "collectPublisherFilters",
+                    "createExecutionPlan",
+                    "updatePlanProgress",
+                  ].includes(toolName);
+
+                  // Use new card component for simple tools like render_content
+                  if (!needsSpecialHandling) {
+                    // Convert old format to new ToolInvocation format
+                    const cardInvocation = {
+                      id: toolInvocation.toolCallId,
+                      name: toolName,
+                      state: (toolInvocation.state === "result" ? "complete" : "loading") as "loading" | "complete",
+                      args: toolInvocation.args,
+                      result: toolInvocation.result,
+                      timestamp: Date.now(),
+                    };
+
+                    return (
+                      <ToolInvocationCard
+                        key={toolInvocation.toolCallId}
+                        invocation={cardInvocation}
+                      />
+                    );
+                  }
+
+                  // Use old component for tools that need special handlers
+                  const additionalProps: Record<string, unknown> = {};
+
+                  // Filter renderer needs specific handlers
+                  if (toolName === "collectPublisherFilters") {
+                    additionalProps.onPriceRangeConfirm = handlePriceRangeConfirm;
+                    additionalProps.onPriceRangeSkip = handlePriceRangeSkip;
+                    additionalProps.onDRRangeConfirm = handleDRRangeConfirm;
+                    additionalProps.onDRRangeSkip = handleDRRangeSkip;
+                    additionalProps.onFinalBrowseCall = triggerFinalBrowseCall;
+                  }
+
+                  // Plan renderer needs chatId and append
+                  if (toolName === "createExecutionPlan" || toolName === "updatePlanProgress") {
+                    additionalProps.chatId = chatId;
+                    additionalProps.onAppendMessage = onAppendMessage;
+                  }
+
+                  return (
+                    <ToolInvocationItem
+                      key={toolInvocation.toolCallId}
+                      toolInvocation={toolInvocation}
+                      loading={isLoading}
+                      onExpand={showInRightPanel}
+                      additionalProps={additionalProps}
+                    />
+                  );
+                })}
+              </div>
+            );
+          }
+
+          return null;
+        })()}
         
         {/* Show content when it exists (skip for system messages, they're shown above) */}
         {content && typeof content === "string" && content.trim() !== "" && role !== "system" && (
           <div className={`text-foreground flex flex-col gap-4 relative ${
             content.trim().startsWith("Error:") ? "error-message" : ""
           }`}>
-            <div className={`${isGenerating ? 'streaming-content' : ''} ${
-              content.trim().startsWith("Error:") 
-                ? "bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 dark:border-red-500/40 rounded-lg p-3" 
+            <div className={`${actualIsGenerating ? 'streaming-content' : ''} ${
+              content.trim().startsWith("Error:")
+                ? "bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 dark:border-red-500/40 rounded-lg p-3"
                 : ""
             }`}>
               <div className={content.trim().startsWith("Error:") ? "text-red-600 dark:text-red-400" : ""}>
@@ -377,8 +479,8 @@ export const Message = ({
             </div>
             
             {/* Typing cursor - only show during streaming */}
-            {isGenerating && (
-              <span 
+            {actualIsGenerating && (
+              <span
                 className="absolute bottom-0 right-0 inline-block w-0.5 h-5 bg-primary animate-[typing-cursor-optimized_1s_ease-in-out_infinite]"
                 aria-hidden="true"
               />
@@ -386,47 +488,8 @@ export const Message = ({
           </div>
         )}
 
-
-        {toolInvocations && (
-          <div className="flex flex-col gap-3 mt-4">
-            {toolInvocations.map((toolInvocation) => {
-              const { toolName } = toolInvocation;
-              const isLoading = loadingTools?.has(toolName) ?? false;
-
-              // Additional props for specific renderers
-              const additionalProps: Record<string, unknown> = {};
-
-              // Filter renderer needs specific handlers
-              if (toolName === "collectPublisherFilters") {
-                additionalProps.onPriceRangeConfirm = handlePriceRangeConfirm;
-                additionalProps.onPriceRangeSkip = handlePriceRangeSkip;
-                additionalProps.onDRRangeConfirm = handleDRRangeConfirm;
-                additionalProps.onDRRangeSkip = handleDRRangeSkip;
-                additionalProps.onFinalBrowseCall = triggerFinalBrowseCall;
-              }
-
-              // Plan renderer needs chatId and append
-              if (toolName === "createExecutionPlan" || toolName === "updatePlanProgress") {
-                additionalProps.chatId = chatId;
-                additionalProps.onAppendMessage = onAppendMessage;
-              }
-
-
-              return (
-                <ToolInvocationItem
-                  key={toolInvocation.toolCallId}
-                  toolInvocation={toolInvocation}
-                  loading={isLoading}
-                  onExpand={showInRightPanel}
-                  additionalProps={additionalProps}
-                />
-              );
-            })}
-          </div>
-        )}
-
         {attachments && (
-          <div className="flex flex-row gap-2">
+          <div className="flex flex-col gap-2">
             {attachments.map((attachment) => (
               <PreviewAttachment key={attachment.url} attachment={attachment} />
             ))}
@@ -434,7 +497,7 @@ export const Message = ({
         )}
 
         {/* Response Action Buttons - Only show for assistant messages when response is complete */}
-        {role === "assistant" && content && typeof content === "string" && !isGenerating && (
+        {role === "assistant" && content && typeof content === "string" && !actualIsGenerating && (
           <div className={`flex items-center gap-1 mt-2 text-muted-foreground transition-opacity duration-200 ${
             isLastMessage ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}>

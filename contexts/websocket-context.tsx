@@ -47,7 +47,18 @@ export enum MessageType {
 }
 
 export enum FunctionName {
-  RenderCheatSheet = "render_cheat_sheet",
+  RenderContent = "render_content",
+  GetUserInfo = "get_user_info",
+}
+
+export interface FunctionCallStartPayload {
+  name: FunctionName;
+}
+
+export interface FunctionCallEndPayload {
+  name: FunctionName;
+  tool_id?: string;
+  tool_result: string;
 }
 
 export interface WebSocketMessage {
@@ -79,9 +90,11 @@ export interface SendMessageData {
   message: {
     room_id: string;
     payload: {
-      role: "user" | "assistant" | "system" | "function";
+      role: "user" | "assistant" | "system" | "function" | "tool";
       content: string;
       name?: string;
+      tool_calls?: any[];
+      tool_call_id?: string;
     };
   };
   chat_array?: Message[];
@@ -90,9 +103,11 @@ export interface SendMessageData {
 }
 
 export interface ChatMessage {
-  role: "user" | "assistant" | "system" | "function";
+  role: "user" | "assistant" | "system" | "function" | "tool";
   content: string;
   name?: string;
+  tool_calls?: any[];
+  tool_call_id?: string;
 }
 
 type WebSocketState = "connecting" | "connected" | "disconnected" | "error";

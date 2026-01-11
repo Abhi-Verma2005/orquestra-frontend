@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 // Import highlight.js theme
 import 'highlight.js/styles/github-dark.css';
 
-import { MermaidChart } from './mermaid-chart';
+import { MermaidChart } from '@/components/custom/mermaid-chart';
 
 const NonMemoizedMarkdown = ({ children }: { children: string }) => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -41,18 +41,33 @@ const NonMemoizedMarkdown = ({ children }: { children: string }) => {
       
       if (!inline && match) {
         let highlightedCode;
+        let displayLanguage = language;
+        
+        // Check if language is supported, fallback to auto-detect if not
         try {
-          highlightedCode = hljs.highlight(codeString, { language }).value;
+          // Try to highlight with the specified language
+          if (hljs.getLanguage(language)) {
+            highlightedCode = hljs.highlight(codeString, { language }).value;
+          } else {
+            // Language not supported, use auto-detect
+            highlightedCode = hljs.highlightAuto(codeString).value;
+            displayLanguage = ''; // Don't show unsupported language name
+          }
         } catch (error) {
+          // Fallback to auto-detect on any error
           highlightedCode = hljs.highlightAuto(codeString).value;
+          displayLanguage = ''; // Don't show language name on error
         }
         return (
           <div className="relative my-6 group">
             {/* Header */}
             <div className="flex items-center justify-between bg-card border-b-2 border-primary px-4 py-2 rounded-t-lg">
-              <span className="text-muted-foreground text-xs font-mono tracking-widest">
-                {language.toUpperCase()}
-              </span>
+              {displayLanguage && (
+                <span className="text-muted-foreground text-xs font-mono tracking-widest">
+                  {displayLanguage.toUpperCase()}
+                </span>
+              )}
+              {!displayLanguage && <div />}
               <div className="flex space-x-1">
                 <div className="size-2 rounded-full bg-destructive" />
                 <div className="size-2 rounded-full bg-yellow-400" />

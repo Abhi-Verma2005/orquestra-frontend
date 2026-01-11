@@ -1,55 +1,37 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
+import { Button } from "../ui/button";
 
 export function RightPanel() {
-  const { isRightPanelOpen, rightPanelContent, closeRightPanel } = useSplitScreen();
+  const { rightPanelContent, closeRightPanel } = useSplitScreen();
 
   return (
-    <AnimatePresence>
-      {isRightPanelOpen && (
-        <motion.div
-          className="flex flex-col border-l shadow-lg h-full"
-          style={{ 
-            backgroundColor: "#121212",
-            borderColor: "#333333"
-          }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+    <div className="flex flex-col h-full bg-card border-l border-border">
+      {/* Header */}
+      <div className="flex items-center justify-between p-3 shrink-0 border-b border-border bg-muted/30">
+        <h2 className="text-sm font-medium text-foreground">
+          Context
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={closeRightPanel}
+          className="h-7 w-7 rounded-full hover:bg-muted"
         >
-          {/* Header */}
-          <div 
-            className="flex items-center justify-between p-3 shrink-0"
-            style={{ backgroundColor: "#1E1E1E", borderBottom: "1px solid #333333" }}
-          >
-            <h2 className="text-sm font-medium" style={{ color: "#E0E0E0" }}>
-              Publishers Results
-            </h2>
-            <button
-              onClick={closeRightPanel}
-              className="p-2 rounded-full transition-all duration-200 hover:scale-110"
-              style={{ 
-                backgroundColor: "#569CD6", 
-                color: "#FFFFFF"
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#00C0C0"}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#569CD6"}
-            >
-              <X className="size-4" />
-            </button>
-          </div>
+          <X className="size-4" />
+        </Button>
+      </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto">
-            {rightPanelContent}
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {rightPanelContent || (
+          <div className="text-sm text-muted-foreground text-center py-8">
+            No active context
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </div>
+    </div>
   );
 }

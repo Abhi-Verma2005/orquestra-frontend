@@ -55,7 +55,7 @@ function addToolMessageToChat({
   toolMessage,
   messages,
 }: {
-  toolMessage: CoreToolMessage;
+  toolMessage: CoreToolMessage & { tool_call_id?: string };
   messages: Array<Message>;
 }): Array<Message> {
   return messages.map((message) => {
@@ -63,15 +63,28 @@ function addToolMessageToChat({
       return {
         ...message,
         toolInvocations: message.toolInvocations.map((toolInvocation) => {
-          const toolResult = toolMessage.content.find(
-            (tool) => tool.toolCallId === toolInvocation.toolCallId,
-          );
+          // Check for tool call ID match - handle both standard CoreToolMessage and our custom format
+          let isMatch = false;
+          let toolResult: any = null;
 
-          if (toolResult) {
+          if (Array.isArray(toolMessage.content)) {
+            const found = toolMessage.content.find(
+              (tool) => tool.toolCallId === toolInvocation.toolCallId,
+            );
+            if (found) {
+              isMatch = true;
+              toolResult = found.result;
+            }
+          } else if (typeof toolMessage.content === "string" && toolMessage.tool_call_id === toolInvocation.toolCallId) {
+            isMatch = true;
+            toolResult = toolMessage.content;
+          }
+
+          if (isMatch) {
             return {
               ...toolInvocation,
               state: "result",
-              result: toolResult.result,
+              result: toolResult,
             };
           }
 
@@ -84,13 +97,41 @@ function addToolMessageToChat({
   });
 }
 
+// Helper function to normalize content to string
+function normalizeMessageContent(content: any): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    // Handle array of content blocks (e.g., [{type: "text", content: "..."}])
+    return content
+      .map((block) => {
+        if (typeof block === "string") return block;
+        if (block && typeof block === "object") {
+          if (block.type === "text" && block.text) return block.text;
+          if (block.content) return normalizeMessageContent(block.content);
+        }
+        return "";
+      })
+      .join("");
+  }
+  if (content && typeof content === "object") {
+    // Handle object with content property
+    if (content.content) return normalizeMessageContent(content.content);
+    if (content.text) return normalizeMessageContent(content.text);
+    // If it's an object without content/text, stringify it
+    return JSON.stringify(content);
+  }
+  return String(content || "");
+}
+
 export function convertToUIMessages(
-  messages: Array<CoreMessage>,
+  messages: Array<(CoreMessage | Message) & { tool_calls?: any[]; tool_call_id?: string }>,
 ): Array<Message> {
   return messages.reduce((chatMessages: Array<Message>, message) => {
     if (message.role === "tool") {
       return addToolMessageToChat({
-        toolMessage: message as CoreToolMessage,
+        toolMessage: message as any,
         messages: chatMessages,
       });
     }
@@ -103,7 +144,7 @@ export function convertToUIMessages(
     } else if (Array.isArray(message.content)) {
       for (const content of message.content) {
         if (content.type === "text") {
-          textContent += content.text;
+          textContent += content.text || "";
         } else if (content.type === "tool-call") {
           toolInvocations.push({
             state: "call",
@@ -113,13 +154,46 @@ export function convertToUIMessages(
           });
         }
       }
+      // If no text content was found in array, try to normalize the whole array
+      if (!textContent) {
+        textContent = normalizeMessageContent(message.content);
+      }
+    } else {
+      // Handle object or other types - normalize to string
+      textContent = normalizeMessageContent(message.content);
     }
 
+    // Also handle backend's tool_calls top-level field (OpenAI format)
+    if (message.tool_calls && Array.isArray(message.tool_calls)) {
+      console.log('[convertToUIMessages] Found tool_calls:', message.tool_calls);
+      for (const tc of message.tool_calls) {
+        try {
+          const args = typeof tc.function.arguments === "string"
+            ? JSON.parse(tc.function.arguments)
+            : tc.function.arguments;
+
+          toolInvocations.push({
+            state: "call",
+            toolCallId: tc.id,
+            toolName: tc.function.name,
+            args: args,
+          });
+          console.log('[convertToUIMessages] Converted tool call:', tc.function.name, args);
+        } catch (e) {
+          console.error('[convertToUIMessages] Failed to parse tool call arguments:', e, tc);
+        }
+      }
+    }
+
+    // If it's already a Message with toolInvocations, preserve them
+    const existingToolInvocations = (message as Message).toolInvocations || [];
+    const combinedToolInvocations = [...toolInvocations, ...existingToolInvocations];
+
     chatMessages.push({
-      id: generateId(),
+      id: (message as Message).id || generateId(),
       role: message.role,
       content: textContent,
-      toolInvocations,
+      toolInvocations: combinedToolInvocations.length > 0 ? combinedToolInvocations : undefined,
     });
 
     return chatMessages;

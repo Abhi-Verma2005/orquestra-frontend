@@ -8,14 +8,15 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { ChatMembers } from "./chat-members";
 import { InviteLinkDialog } from "./invite-link-dialog";
 import { LeftSidebar } from "./left-sidebar";
-import { Markdown } from "./markdown";
-import { Message as PreviewMessage } from "./message";
+import { Markdown } from "@/components/chat/Markdown";
+import { Message as PreviewMessage } from "@/components/chat/Message";
 import { MultimodalInput } from "./multimodal-input";
 import { RightPanel } from "./RightPanel";
 import {
   useEnhancedClaudeScroll,
-} from "./use-scroll-to-bottom";
+} from "@/hooks/use-scroll-to-bottom";
 import { useCart } from "../../contexts/cart-context";
+import { ChatUIStateProvider, useChatUIState } from "../../contexts/chat-ui-state-context";
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import { useUserInfo } from "../../contexts/UserInfoProvider";
 import {
@@ -23,11 +24,46 @@ import {
   MessageType,
   ChatMessage,
   FunctionName,
+  FunctionCallStartPayload,
+  FunctionCallEndPayload,
 } from "../../contexts/websocket-context";
 const getPerChatDraftKey = (chatId: string) => `chat_draft_${chatId}`;
 const NEW_CHAT_DRAFT_KEY = `chat_draft_new`;
 
-export function Chat({
+// Helper function to normalize content to string
+// Handles cases where content might be an object, array, or string
+function normalizeContent(content: any): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    // Handle array of content blocks (e.g., [{type: "text", content: "..."}])
+    return content
+      .map((block) => {
+        if (typeof block === "string") return block;
+        if (block && typeof block === "object") {
+          if (block.type === "text" && block.text) return block.text;
+          if (block.content) return normalizeContent(block.content);
+        }
+        return "";
+      })
+      .join("");
+  }
+  if (content && typeof content === "object") {
+    // Handle object with content property
+    if (content.content) return normalizeContent(content.content);
+    if (content.text) return normalizeContent(content.text);
+    // If it's an object without content/text, stringify it
+    return JSON.stringify(content);
+  }
+  return String(content || "");
+}
+
+/**
+ * Internal Chat Content Component
+ * Separated to allow usage of useChatUIState hook within the provider
+ */
+function ChatContent({
   id,
   initialMessages,
   user,
@@ -50,6 +86,17 @@ export function Chat({
   const wsCtx = useWebSocket();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [hasJoined, setHasJoined] = useState(false);
+
+  // Use centralized UI state from context
+  const {
+    isThinking,
+    isExecutingTool,
+    isStreamingText,
+    executingTools,
+    isComplete,
+    isIdle,
+    toolInvocations: realtimeToolInvocations,
+  } = useChatUIState();
 
   // Clean up initialMessages: merge empty assistant messages with tool invocations into adjacent messages
   const cleanedInitialMessages = useMemo(() => {
@@ -125,11 +172,14 @@ export function Chat({
   const [messages, setMessages] = useState<Array<Message>>(
     cleanedInitialMessages
   );
+
   // Input state (draft restored via effect below)
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const saveDraftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [loadingTools, setLoadingTools] = useState<Set<string>>(new Set());
+
+  // Use centralized loading tools from context (no local state needed)
+  const loadingTools = executingTools;
   const currentAssistantMessageIdRef = useRef<string | null>(null);
   const streamingContentRef = useRef<string>("");
   const stopRequestedRef = useRef(false);
@@ -386,9 +436,31 @@ export function Chat({
 
             if (existingIndex >= 0) {
               const updated = [...prev];
+              
+              // Convert realtimeToolInvocations to message format and add to message
+              const messageToolInvocations = realtimeToolInvocations.map((realtimeInv) => {
+                return {
+                  toolCallId: realtimeInv.id,
+                  toolName: realtimeInv.name,
+                  args: realtimeInv.args,
+                  state: realtimeInv.state === 'complete' ? 'result' as const : 'call' as const,
+                  result: realtimeInv.result,
+                };
+              });
+
+              // Merge with existing tool invocations (avoid duplicates)
+              const existingToolInvocations = updated[existingIndex].toolInvocations || [];
+              const existingToolCallIds = new Set(existingToolInvocations.map(inv => inv.toolCallId));
+              
+              // Only add tool invocations that don't already exist
+              const newToolInvocations = messageToolInvocations.filter(
+                inv => !existingToolCallIds.has(inv.toolCallId)
+              );
+
               updated[existingIndex] = {
                 ...updated[existingIndex],
                 content: finalContent,
+                toolInvocations: [...existingToolInvocations, ...newToolInvocations],
               };
               return updated;
             }
@@ -443,8 +515,11 @@ export function Chat({
             .toString(36)
             .slice(2, 11)}`;
 
+          // Normalize content to string
+          const normalizedContent = normalizeContent(chatMsg.content);
+
           // If a user joined, reload chat info to update isGroupChat status
-          if (chatMsg.content.includes("joined the chat") && id && user) {
+          if (normalizedContent.includes("joined the chat") && id && user) {
             fetch(`/api/chat/info?id=${id}`)
               .then((response) => {
                 if (response.ok) {
@@ -470,7 +545,7 @@ export function Chat({
             {
               id: messageId,
               role: "system",
-              content: chatMsg.content,
+              content: normalizedContent,
             },
           ]);
           return;
@@ -483,12 +558,15 @@ export function Chat({
             .toString(36)
             .slice(2, 11)}`;
 
+          // Normalize content to string
+          const normalizedContent = normalizeContent(chatMsg.content);
+
           setMessages((prev) => {
             // Check for duplicates before adding
             const isDuplicate = prev.some(
               (msg) =>
                 msg.role === "user" &&
-                msg.content === chatMsg.content &&
+                normalizeContent(msg.content) === normalizedContent &&
                 msg.name === chatMsg.name
             );
             if (isDuplicate) {
@@ -499,38 +577,11 @@ export function Chat({
               {
                 id: messageId,
                 role: "user",
-                content: chatMsg.content,
+                content: normalizedContent,
                 name: chatMsg.name, // Include sender's user_id
               } as Message,
             ];
           });
-
-          // Save to database for all group messages (including our own if received via broadcast)
-          // Only save if chat exists (not on home page with random UUID)
-          // if (user && chatExists) {
-          //   const userMessage = {
-          //     id: messageId,
-          //     role: "user",
-          //     content: chatMsg.content,
-          //     name: chatMsg.name,
-          //   };
-          //   fetch("/api/chat/message", {
-          //     method: "POST",
-          //     headers: { "Content-Type": "application/json" },
-          //     body: JSON.stringify({
-          //       chatId: id,
-          //       message: userMessage,
-          //     }),
-          //   })
-          //     .then((res) => {
-          //       if (!res.ok) {
-          //         console.error("[Chat] Failed to save user message:", res.status, res.statusText);
-          //       }
-          //     })
-          //     .catch((err) => {
-          //       console.error("[Chat] Failed to save user message:", err);
-          //     });
-          // }
           return;
         }
 
@@ -541,12 +592,15 @@ export function Chat({
             .toString(36)
             .slice(2, 11)}`;
 
+          // Normalize content to string
+          const normalizedContent = normalizeContent(chatMsg.content);
+
           setMessages((prev) => {
             // Check if this exact content already exists (deduplication)
             // Also check if it was added very recently (within 2 seconds) to prevent rapid duplicates
             const now = Date.now();
             const contentExists = prev.some((msg) => {
-              if (msg.role !== "assistant" || msg.content !== chatMsg.content) {
+              if (msg.role !== "assistant" || normalizeContent(msg.content) !== normalizedContent) {
                 return false;
               }
 
@@ -570,18 +624,47 @@ export function Chat({
               return prev; // Don't add duplicate
             }
 
-            // Check if we should update the last assistant message or create a new one
-            // Look for the last assistant message that either has no content or has tool invocations
+            // Before creating/updating a new message, move any realtime tool invocations to the previous assistant message
+            const updated = [...prev];
             let lastAssistantIndex = -1;
-            for (let i = prev.length - 1; i >= 0; i--) {
-              if (prev[i].role === "assistant") {
+            for (let i = updated.length - 1; i >= 0; i--) {
+              if (updated[i].role === "assistant") {
                 lastAssistantIndex = i;
                 break;
               }
             }
 
+            // If there's a previous assistant message and we have realtime tool invocations, move them
+            if (lastAssistantIndex >= 0 && realtimeToolInvocations.length > 0) {
+              const lastAssistant = updated[lastAssistantIndex];
+              const existingToolInvocations = lastAssistant.toolInvocations || [];
+              const existingToolCallIds = new Set(existingToolInvocations.map(inv => inv.toolCallId));
+              
+              // Convert realtimeToolInvocations to message format
+              const messageToolInvocations = realtimeToolInvocations
+                .filter(realtimeInv => !existingToolCallIds.has(realtimeInv.id))
+                .map((realtimeInv) => {
+                  return {
+                    toolCallId: realtimeInv.id,
+                    toolName: realtimeInv.name,
+                    args: realtimeInv.args,
+                    state: realtimeInv.state === 'complete' ? 'result' as const : 'call' as const,
+                    result: realtimeInv.result,
+                  };
+                });
+
+              if (messageToolInvocations.length > 0) {
+                updated[lastAssistantIndex] = {
+                  ...lastAssistant,
+                  toolInvocations: [...existingToolInvocations, ...messageToolInvocations],
+                };
+              }
+            }
+
+            // Check if we should update the last assistant message or create a new one
+            // Look for the last assistant message that either has no content or has tool invocations
             if (lastAssistantIndex >= 0) {
-              const lastAssistant = prev[lastAssistantIndex];
+              const lastAssistant = updated[lastAssistantIndex];
               // Update if message has no content OR has tool invocations (to merge acknowledgment with tool results)
               if (
                 !lastAssistant.content ||
@@ -589,10 +672,9 @@ export function Chat({
                   lastAssistant.toolInvocations.length > 0)
               ) {
                 // Update existing assistant message, preserving tool invocations
-                const updated = [...prev];
                 updated[lastAssistantIndex] = {
                   ...updated[lastAssistantIndex],
-                  content: chatMsg.content,
+                  content: normalizedContent,
                   // Preserve existing tool invocations
                   toolInvocations: updated[lastAssistantIndex].toolInvocations,
                 };
@@ -602,11 +684,11 @@ export function Chat({
 
             // Create new assistant message if no suitable existing one found
             return [
-              ...prev,
+              ...updated,
               {
                 id: messageId,
                 role: "assistant",
-                content: chatMsg.content,
+                content: normalizedContent,
               },
             ];
           });
@@ -619,71 +701,43 @@ export function Chat({
               role: "assistant",
               content: chatMsg.content,
             };
-            // fetch("/api/chat/message", {
-            //   method: "POST",
-            //   headers: { "Content-Type": "application/json" },
-            //   body: JSON.stringify({
-            //     chatId: id,
-            //     message: assistantMessage,
-            //   }),
-            // })
-            //   .then((res) => {
-            //     if (!res.ok) {
-            //       console.error(
-            //         "[Chat] Failed to save assistant message:",
-            //         res.status,
-            //         res.statusText
-            //       );
-            //     }
-            //   })
-            //   .catch((err) => {
-            //     console.error("[Chat] Failed to save assistant message:", err);
-            //   });
           }
         }
       }
     );
 
-    // Handle function call start (show loader)
-    const unsubscribeFunctionCallStart = onEvent(
-      MessageType.FunctionCallStart,
-      (payload: unknown) => {
-        const data = payload as { name: string };
-        setLoadingTools((prev) => {
-          const updated = new Set(prev);
-          updated.add(data.name);
-          return updated;
-        });
-      }
-    );
-
-    // Handle function call end (keep loader until result arrives)
-    // Note: We don't remove from loadingTools here because we want the loader
-    // to stay visible until the FunctionResult event arrives
-    const unsubscribeFunctionCallEnd = onEvent(
-      MessageType.FunctionCallEnd,
-      (payload: unknown) => {
-        // Don't remove from loadingTools yet - wait for FunctionResult
-      }
-    );
+    // [REMOVED] FunctionCallStart and FunctionCallEnd handlers
+    // These are now handled by the centralized useWebSocketEvents hook
+    // which manages loadingTools state in the ChatUIStateContext
 
     // Handle function calls
     const unsubscribeFunctionCall = onEvent(
       MessageType.FunctionCall,
       (payload: unknown) => {
         const data = payload as {
+          id?: string;
           name: string;
-          args: Record<string, unknown>;
+          args?: Record<string, unknown>;
+          params?: Record<string, unknown>;
           requestId?: string;
           role?: string;
         };
 
         // Handle specific function names
-        if (data.name === FunctionName.RenderCheatSheet) {
-          const { title, content } = data.args as {
-            title: string;
-            content: string;
-          };
+        if (data.name === FunctionName.RenderContent) {
+          // Use params (backend sends params, not args)
+          const toolParams = data.params || data.args;
+          if (!toolParams) {
+            return; // No params available yet
+          }
+          
+          const title = toolParams.title as string | undefined;
+          const content = toolParams.content as string | undefined;
+          
+          if (!title || !content) {
+            return; // Required fields missing
+          }
+          
           setRightPanelContent(
             <div className="flex flex-col h-full bg-[#121212]">
               <div className="p-6 overflow-y-auto">
@@ -749,6 +803,7 @@ export function Chat({
                 updated[lastAssistantIndex] = updatedMessage;
 
                 if (user && updatedMessage.role === "assistant") {
+                  // Backend handles persistence - no frontend save needed
                   // fetch("/api/chat/message", {
                   //   method: "POST",
                   //   headers: { "Content-Type": "application/json" },
@@ -882,12 +937,8 @@ export function Chat({
           return;
         }
 
-        // Remove from loadingTools now that we have the result
-        setLoadingTools((prev) => {
-          const updated = new Set(prev);
-          updated.delete(data.name);
-          return updated;
-        });
+        // Note: loadingTools cleanup is now handled by centralized WebSocket event manager
+        // via FunctionCallEnd event - no manual cleanup needed
 
         // Update ALL tool invocations with this name to result state (in case there are duplicates)
         setMessages((prev) => {
@@ -919,32 +970,32 @@ export function Chat({
                 };
                 updated[i] = updatedMessage;
 
-                // Save the updated message with function result to DB
-                if (user && updatedMessage.role === "assistant") {
-                  // fetch("/api/chat/message", {
-                  //   method: "POST",
-                  //   headers: { "Content-Type": "application/json" },
-                  //   body: JSON.stringify({
-                  //     chatId: id,
-                  //     message: updatedMessage,
-                  //   }),
-                  // })
-                  //   .then((res) => {
-                  //     if (!res.ok) {
-                  //       console.error(
-                  //         "[Chat] Failed to save function result:",
-                  //         res.status,
-                  //         res.statusText
-                  //       );
-                  //     }
-                  //   })
-                  //   .catch((err) => {
-                  //     console.error(
-                  //       "[Chat] Failed to save function result:",
-                  //       err
-                  //     );
-                  //   });
-                }
+                // Backend handles persistence - no frontend save needed
+                // if (user && updatedMessage.role === "assistant") {
+                //   fetch("/api/chat/message", {
+                //     method: "POST",
+                //     headers: { "Content-Type": "application/json" },
+                //     body: JSON.stringify({
+                //       chatId: id,
+                //       message: updatedMessage,
+                //     }),
+                //   })
+                //     .then((res) => {
+                //       if (!res.ok) {
+                //         console.error(
+                //           "[Chat] Failed to save function result:",
+                //           res.status,
+                //           res.statusText
+                //         );
+                //       }
+                //     })
+                //     .catch((err) => {
+                //       console.error(
+                //         "[Chat] Failed to save function result:",
+                //         err
+                //       );
+                //     });
+                // }
               }
             }
           }
@@ -1032,12 +1083,7 @@ export function Chat({
           };
         })();
 
-        // Remove browsePublishers from loadingTools since we have the data
-        setLoadingTools((prev) => {
-          const updated = new Set(prev);
-          updated.delete("browsePublishers");
-          return updated;
-        });
+        // Note: loadingTools cleanup handled by centralized WebSocket event manager
 
         // Update ALL browsePublishers tool invocations to result state
         setMessages((prev) => {
@@ -1070,33 +1116,6 @@ export function Chat({
                   toolInvocations: newToolInvocations,
                 };
                 updated[i] = updatedMessage;
-
-                // Save the updated message with publishers data to DB
-                if (user && updatedMessage.role === "assistant") {
-                  // fetch("/api/chat/message", {
-                  //   method: "POST",
-                  //   headers: { "Content-Type": "application/json" },
-                  //   body: JSON.stringify({
-                  //     chatId: id,
-                  //     message: updatedMessage,
-                  //   }),
-                  // })
-                  //   .then((res) => {
-                  //     if (!res.ok) {
-                  //       console.error(
-                  //         "[Chat] Failed to save publishers data:",
-                  //         res.status,
-                  //         res.statusText
-                  //       );
-                  //     }
-                  //   })
-                  //   .catch((err) => {
-                  //     console.error(
-                  //       "[Chat] Failed to save publishers data:",
-                  //       err
-                  //     );
-                  //   });
-                }
               }
             }
           }
@@ -1125,12 +1144,7 @@ export function Chat({
           message?: string;
         };
 
-        // Remove viewCart from loadingTools since we have the data
-        setLoadingTools((prev) => {
-          const updated = new Set(prev);
-          updated.delete("viewCart");
-          return updated;
-        });
+        // Note: loadingTools cleanup handled by centralized WebSocket event manager
 
         // Update viewCart tool invocations to result state (similar to PublishersData)
         if (data.summary) {
@@ -1185,26 +1199,6 @@ export function Chat({
 
                   // Save the updated message with cart data to DB
                   if (user && updatedMessage.role === "assistant") {
-                    // fetch("/api/chat/message", {
-                    //   method: "POST",
-                    //   headers: { "Content-Type": "application/json" },
-                    //   body: JSON.stringify({
-                    //     chatId: id,
-                    //     message: updatedMessage,
-                    //   }),
-                    // })
-                    //   .then((res) => {
-                    //     if (!res.ok) {
-                    //       console.error(
-                    //         "[Chat] Failed to save cart data:",
-                    //         res.status,
-                    //         res.statusText
-                    //       );
-                    //     }
-                    //   })
-                    //   .catch((err) => {
-                    //     console.error("[Chat] Failed to save cart data:", err);
-                    //   });
                   }
                 }
               }
@@ -1299,8 +1293,8 @@ export function Chat({
       unsubscribeTextStreamEnd();
       unsubscribeMessageReceived();
       unsubscribeChatMessage();
-      unsubscribeFunctionCallStart();
-      unsubscribeFunctionCallEnd();
+      // unsubscribeFunctionCallStart(); // Removed - handled by context
+      // unsubscribeFunctionCallEnd(); // Removed - handled by context
       unsubscribeFunctionCall();
       unsubscribeFunctionResult();
       unsubscribePublishersData();
@@ -1316,7 +1310,7 @@ export function Chat({
     addItemToCart,
     setRightPanelContent,
     setMessages,
-    setLoadingTools,
+    // setLoadingTools removed - now managed by centralized context
     chatExists,
     resetStreamingState,
   ]);
@@ -1585,10 +1579,10 @@ export function Chat({
 
   return (
     <div className="h-dvh bg-background relative">
-      {/* Menu button - positioned absolutely */}
-      <div className="absolute left-4 top-4 z-30">
-        <LeftSidebar user={user} onCollapseChange={setIsLeftSidebarCollapsed} />
-      </div>
+        {/* Menu button - positioned absolutely */}
+        <div className="absolute left-4 top-4 z-30">
+          <LeftSidebar user={user} onCollapseChange={setIsLeftSidebarCollapsed} />
+        </div>
 
       {/* Panel Group for resizable layout */}
       <div className="h-full w-full">
@@ -1716,5 +1710,20 @@ export function Chat({
         </PanelGroup>
       </div>
     </div>
+  );
+}
+
+/**
+ * Main Chat component with provider wrapper
+ */
+export function Chat(props: {
+  id: string | null;
+  initialMessages: Array<Message>;
+  user?: any;
+}) {
+  return (
+    <ChatUIStateProvider chatId={props.id}>
+      <ChatContent {...props} />
+    </ChatUIStateProvider>
   );
 }
