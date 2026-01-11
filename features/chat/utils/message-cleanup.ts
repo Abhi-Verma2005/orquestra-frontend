@@ -1,25 +1,36 @@
 /**
  * Message Cleanup Utilities
- * 
+ *
  * Pure functions for cleaning and merging initial messages
  */
 
 import type { Message, ToolInvocation } from "ai";
 
 /**
- * Cleans up initial messages by merging empty assistant messages with tool invocations
- * into adjacent messages with content
- * 
+ * Cleans up initial messages by consolidating multiple assistant messages
+ * from the same "turn" (between user messages) into a single assistant message.
+ *
+ * This handles the case where agentic loops create multiple LLM calls per user message,
+ * which are saved as separate messages in the DB but should be displayed as one.
+ *
  * @param initialMessages - Array of initial messages from database
- * @returns Cleaned array of messages with merged tool invocations
- * 
+ * @returns Cleaned array of messages with consolidated assistant responses
+ *
  * @example
  * ```ts
- * const cleaned = cleanInitialMessages([
- *   { role: "assistant", content: "", toolInvocations: [...] },
- *   { role: "assistant", content: "Response text" }
- * ]);
- * // Returns: [{ role: "assistant", content: "Response text", toolInvocations: [...] }]
+ * // Input from DB (multiple LLM calls per turn):
+ * const messages = [
+ *   { role: "user", content: "Tell me about Rust" },
+ *   { role: "assistant", content: "Let me search...", toolInvocations: [search] },
+ *   { role: "assistant", content: "Based on my search, Rust is..." }
+ * ];
+ *
+ * // Output (consolidated):
+ * const cleaned = cleanInitialMessages(messages);
+ * // Returns: [
+ * //   { role: "user", content: "Tell me about Rust" },
+ * //   { role: "assistant", content: "Let me search...\n\nBased on my search, Rust is...", toolInvocations: [search] }
+ * // ]
  * ```
  */
 export function cleanInitialMessages(
@@ -28,67 +39,86 @@ export function cleanInitialMessages(
   if (!initialMessages || initialMessages.length === 0) return [];
 
   const cleaned: Array<Message> = [];
-  const pendingToolInvocations: Array<ToolInvocation>[] = []; // Track tool invocations from skipped messages
+  let currentTurnAssistant: Message | null = null;
+  let currentTurnToolInvocations: ToolInvocation[] = [];
+  let currentTurnContent: string[] = [];
+
+  const flushCurrentTurn = () => {
+    if (currentTurnAssistant || currentTurnContent.length > 0 || currentTurnToolInvocations.length > 0) {
+      // Combine all content from the turn, filtering out empty strings
+      const combinedContent = currentTurnContent
+        .filter(c => c && c.trim() !== '')
+        .join('\n\n');
+
+      // Deduplicate tool invocations by toolCallId
+      const seenToolCallIds = new Set<string>();
+      const uniqueToolInvocations = currentTurnToolInvocations.filter(inv => {
+        if (seenToolCallIds.has(inv.toolCallId)) {
+          return false;
+        }
+        seenToolCallIds.add(inv.toolCallId);
+        return true;
+      });
+
+      cleaned.push({
+        id: currentTurnAssistant?.id || `consolidated_${Date.now()}`,
+        role: 'assistant',
+        content: combinedContent,
+        toolInvocations: uniqueToolInvocations.length > 0 ? uniqueToolInvocations : undefined,
+      });
+    }
+    // Reset turn state
+    currentTurnAssistant = null;
+    currentTurnToolInvocations = [];
+    currentTurnContent = [];
+  };
 
   for (let i = 0; i < initialMessages.length; i++) {
     const currentMsg = initialMessages[i];
 
-    // If it's an assistant message with empty content but has tool invocations
-    if (
-      currentMsg.role === "assistant" &&
-      (!currentMsg.content || currentMsg.content.trim() === "") &&
-      currentMsg.toolInvocations &&
-      currentMsg.toolInvocations.length > 0
-    ) {
-      // Look ahead to see if there's a next assistant message with content
-      let hasNextAssistantWithContent = false;
-
-      for (let j = i + 1; j < initialMessages.length; j++) {
-        if (
-          initialMessages[j].role === "assistant" &&
-          initialMessages[j].content &&
-          initialMessages[j].content.trim() !== ""
-        ) {
-          hasNextAssistantWithContent = true;
-          // Store tool invocations to merge into the next assistant message
-          pendingToolInvocations.push(currentMsg.toolInvocations || []);
-          break;
-        }
-        // Stop if we hit a user message
-        if (initialMessages[j].role === "user") {
-          break;
-        }
+    if (currentMsg.role === 'user' || currentMsg.role === 'system') {
+      // Flush any pending assistant turn before adding user/system message
+      flushCurrentTurn();
+      cleaned.push(currentMsg);
+    } else if (currentMsg.role === 'assistant') {
+      // Track first assistant message in this turn for ID
+      if (!currentTurnAssistant) {
+        currentTurnAssistant = currentMsg;
       }
 
-      // If there's a next assistant with content, skip this empty message
-      // The tool invocations will be merged when we process that message
-      if (hasNextAssistantWithContent) {
-        continue; // Skip this empty message
-      } else {
-        // No next assistant with content, keep it (might need to show tool invocations)
-        cleaned.push(currentMsg);
+      // Accumulate content
+      if (currentMsg.content && currentMsg.content.trim() !== '') {
+        currentTurnContent.push(currentMsg.content);
       }
-    } else if (
-      currentMsg.role === "assistant" &&
-      currentMsg.content &&
-      currentMsg.content.trim() !== "" &&
-      pendingToolInvocations.length > 0
-    ) {
-      // This is an assistant message with content, merge any pending tool invocations
-      const mergedToolInvocations = [
-        ...pendingToolInvocations.flat(),
-        ...(currentMsg.toolInvocations || []),
-      ];
-      cleaned.push({
-        ...currentMsg,
-        toolInvocations: mergedToolInvocations,
-      });
-      pendingToolInvocations.length = 0; // Clear pending
+
+      // Accumulate tool invocations
+      if (currentMsg.toolInvocations && currentMsg.toolInvocations.length > 0) {
+        currentTurnToolInvocations.push(...currentMsg.toolInvocations);
+      }
+    } else if (currentMsg.role === 'tool') {
+      // Tool messages should update the corresponding tool invocation's result
+      // Find the matching tool invocation and update it
+      const toolCallId = (currentMsg as any).tool_call_id || (currentMsg as any).toolCallId;
+      if (toolCallId) {
+        const matchingInvocation = currentTurnToolInvocations.find(
+          inv => inv.toolCallId === toolCallId
+        );
+        if (matchingInvocation) {
+          // Update the state to 'result' and add the result
+          matchingInvocation.state = 'result';
+          matchingInvocation.result = currentMsg.content;
+        }
+      }
+      // Don't add tool messages to the cleaned array - they're embedded in assistant messages
     } else {
-      // Not an empty assistant message, add it as-is
+      // Unknown role, add as-is
+      flushCurrentTurn();
       cleaned.push(currentMsg);
     }
   }
+
+  // Flush any remaining assistant turn
+  flushCurrentTurn();
 
   return cleaned;
 }

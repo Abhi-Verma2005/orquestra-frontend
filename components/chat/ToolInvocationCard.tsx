@@ -18,7 +18,7 @@ interface ToolInvocationCardProps {
  * - Clickable when state='complete' to show in sidebar
  */
 export function ToolInvocationCard({ invocation }: ToolInvocationCardProps) {
-  const { setRightPanelContent } = useSplitScreen();
+  const { setRightPanelContent, openRightPanel } = useSplitScreen();
 
   const handleClick = () => {
     if (invocation.state === 'complete') {
@@ -35,7 +35,7 @@ export function ToolInvocationCard({ invocation }: ToolInvocationCardProps) {
                 </pre>
               </div>
             )}
-            {invocation.result && (
+            {!!invocation.result && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-2">Result:</div>
                 <pre className="bg-muted p-3 rounded-md text-xs overflow-auto">
@@ -46,6 +46,7 @@ export function ToolInvocationCard({ invocation }: ToolInvocationCardProps) {
           </div>
         </div>
       );
+      openRightPanel();
     }
   };
 
@@ -66,7 +67,7 @@ export function ToolInvocationCard({ invocation }: ToolInvocationCardProps) {
   // Show loading shimmer if still loading (not complete)
   const isComplete = invocation.state === 'complete';
   const isLoading = !isComplete;
-  
+
   // Show loading shimmer if loading and no args yet
   if (isLoading && !invocation.args) {
     return (

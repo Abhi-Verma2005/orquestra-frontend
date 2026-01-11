@@ -55,9 +55,14 @@ function addToolMessageToChat({
   toolMessage,
   messages,
 }: {
-  toolMessage: CoreToolMessage & { tool_call_id?: string };
+  toolMessage: CoreToolMessage & { tool_call_id?: string; toolCallId?: string };
   messages: Array<Message>;
 }): Array<Message> {
+  // Extract tool_call_id from various possible locations (handle both snake_case and camelCase)
+  const toolCallId = (toolMessage as any).tool_call_id
+    || (toolMessage as any).toolCallId
+    || (toolMessage as any).id;
+
   return messages.map((message) => {
     if (message.toolInvocations) {
       return {
@@ -68,6 +73,7 @@ function addToolMessageToChat({
           let toolResult: any = null;
 
           if (Array.isArray(toolMessage.content)) {
+            // Standard CoreToolMessage format with content array
             const found = toolMessage.content.find(
               (tool) => tool.toolCallId === toolInvocation.toolCallId,
             );
@@ -75,7 +81,8 @@ function addToolMessageToChat({
               isMatch = true;
               toolResult = found.result;
             }
-          } else if (typeof toolMessage.content === "string" && toolMessage.tool_call_id === toolInvocation.toolCallId) {
+          } else if (toolCallId && toolCallId === toolInvocation.toolCallId) {
+            // Custom format: tool_call_id at top level, content is the result
             isMatch = true;
             toolResult = toolMessage.content;
           }

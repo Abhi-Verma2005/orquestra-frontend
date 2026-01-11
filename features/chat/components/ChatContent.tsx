@@ -12,8 +12,8 @@
 
 'use client';
 
-import { useState, useRef, useCallback, useMemo } from 'react';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from 'react-resizable-panels';
 import type { Message, Attachment } from 'ai';
 
 import { cn } from '@/lib/utils';
@@ -62,13 +62,26 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
     isComplete,
     isIdle,
     toolInvocations: realtimeToolInvocations,
+    currentMessageToolInvocations,
+    currentMessageId,
     resetState: resetUIState,
+    setCurrentMessageId,
+    getToolInvocationsForMessage,
   } = useChatUIState();
 
   // Local state
   const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
-  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('isLeftSidebarCollapsed') === 'true';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('isLeftSidebarCollapsed', String(isLeftSidebarCollapsed));
+  }, [isLeftSidebarCollapsed]);
   const [isGroupChat, setIsGroupChat] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [chatExists, setChatExists] = useState(!!id);
@@ -77,6 +90,7 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
   const stopRequestedRef = useRef(false);
   const lastUserMessageRef = useRef<string | null>(null);
   const streamingContentRef = useRef<string>("");
+  const leftPanelRef = useRef<ImperativePanelHandle>(null);
 
   // Use extracted hooks - messages first to get length
   const { messages, setMessages, resetStreamingState } = useChatMessages({
@@ -84,6 +98,7 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
     initialMessages,
     onEvent,
     realtimeToolInvocations: realtimeToolInvocations as any,
+    currentMessageToolInvocations: currentMessageToolInvocations as any,
     setRightPanelContent,
     setIsLoading,
     chatExists,
@@ -95,6 +110,8 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
     lastUserMessageRef,
     cartState,
     addItemToCart,
+    setCurrentMessageId,
+    currentMessageId,
   });
 
   // Use drafts hook with actual messages length
@@ -129,7 +146,17 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
     stopRequestedRef,
   });
 
-  // Submission logic
+  // Sync panel state on mount
+  useEffect(() => {
+    const panel = leftPanelRef.current;
+    if (panel) {
+      if (isLeftSidebarCollapsed) {
+        panel.collapse();
+      } else {
+        panel.expand();
+      }
+    }
+  }, []);
   const { handleSubmit, isCreatingChat } = useChatSubmission({
     input,
     isLoading,
@@ -235,11 +262,24 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
   // Loading tools from context
   const loadingTools = executingTools;
 
+  // Sidebar toggle handler
+  const handleToggleSidebar = useCallback(() => {
+    const panel = leftPanelRef.current;
+    if (panel) {
+      if (isLeftSidebarCollapsed) {
+        panel.expand();
+      } else {
+        panel.collapse();
+      }
+    }
+  }, [isLeftSidebarCollapsed]);
+
   return (
     <div className="h-dvh bg-background relative overflow-hidden">
       <PanelGroup direction="horizontal" className="size-full">
         {/* Left Sidebar Panel */}
         <Panel
+          ref={leftPanelRef}
           defaultSize={18}
           minSize={15}
           maxSize={25}
@@ -252,10 +292,14 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
             isLeftSidebarCollapsed ? "min-w-[50px]" : ""
           )}
         >
-          <SidebarPanel user={user} isCollapsed={isLeftSidebarCollapsed} />
+          <SidebarPanel
+            user={user}
+            isCollapsed={isLeftSidebarCollapsed}
+            onToggleCollapse={handleToggleSidebar}
+          />
         </Panel>
 
-        <PanelResizeHandle className="w-[1px] bg-border hover:bg-primary/50 transition-colors" />
+        <PanelResizeHandle className="w-[1px] bg-border hover:bg-muted transition-colors" />
 
         {/* Main Chat Area */}
         <Panel
@@ -309,7 +353,7 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
         {/* Right Panel */}
         {isRightPanelOpen && (
           <>
-            <PanelResizeHandle className="w-[1px] bg-border hover:bg-primary/50 transition-colors relative z-10" />
+            <PanelResizeHandle className="w-[1px] bg-border hover:bg-muted transition-colors relative z-10" />
             <Panel
               defaultSize={20}
               minSize={15}

@@ -102,7 +102,7 @@ export function FiltersRenderer({
           <div className="flex gap-2">
             <button
               onClick={() => onFinalBrowseCall?.(collectedFilters || {})}
-              className="flex-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium px-3 py-2 rounded-md transition-colors"
+              className="flex-1 bg-primary hover:bg-primary/90 text-white text-xs font-medium px-3 py-2 rounded-md transition-colors"
             >
               Search Publishers
             </button>

@@ -61,6 +61,7 @@ export interface ToolInvocation {
   progress?: number; // 0-100, for progress updates
   progressMessage?: string; // Current progress message
   timestamp: number;
+  messageId?: string; // Associates this tool invocation with a specific message
 }
 
 // Chat UI Context State
@@ -93,4 +94,5 @@ export type ChatUIEvent =
   | { type: 'TOOL_PROGRESS'; toolId: string; message: string; progress?: number }
   | { type: 'TOOL_END'; toolName: string; toolId?: string }
   | { type: 'STREAM_END' }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'SET_CURRENT_MESSAGE_ID'; messageId: string };

@@ -21,8 +21,14 @@ interface ChatUIStateContextValue {
   // Tool invocations (visual cards for function calls)
   toolInvocations: ToolInvocation[];
 
+  // Tool invocations for the current message only
+  currentMessageToolInvocations: ToolInvocation[];
+
   // Currently executing tools
   executingTools: Set<string>;
+
+  // Current message ID being processed
+  currentMessageId: string | null;
 
   // State helpers
   isThinking: boolean;
@@ -33,6 +39,8 @@ interface ChatUIStateContextValue {
 
   // Actions
   resetState: () => void;
+  setCurrentMessageId: (messageId: string) => void;
+  getToolInvocationsForMessage: (messageId: string) => ToolInvocation[];
 }
 
 const ChatUIStateContext = createContext<ChatUIStateContextValue | null>(null);

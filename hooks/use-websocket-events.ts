@@ -24,6 +24,7 @@ interface WebSocketEventsState {
   streamingText: string;
   toolInvocations: ToolInvocation[];
   executingTools: Set<string>;
+  currentMessageId: string | null; // Tracks which message current tool invocations belong to
 }
 
 const initialState: WebSocketEventsState = {
@@ -31,6 +32,7 @@ const initialState: WebSocketEventsState = {
   streamingText: '',
   toolInvocations: [],
   executingTools: new Set(),
+  currentMessageId: null,
 };
 
 /**
@@ -93,12 +95,18 @@ function chatUIReducer(
       const newExecutingTools = new Set(state.executingTools);
       newExecutingTools.add(event.toolName);
 
+      // If no current message ID exists, generate one now
+      // This handles the case where tool calls start before any text is streamed
+      const messageId = state.currentMessageId || `stream_${Date.now()}`;
+
       // Create a new tool invocation card in loading state
+      // Tag it with the current message ID for proper association
       const newInvocation: ToolInvocation = {
         id: event.toolId,
         name: event.toolName,
         state: 'loading',
         timestamp: Date.now(),
+        messageId: messageId,
       };
 
       return {
@@ -106,6 +114,8 @@ function chatUIReducer(
         uiState: { type: 'executing_tool', toolName: event.toolName },
         executingTools: newExecutingTools,
         toolInvocations: [...state.toolInvocations, newInvocation],
+        // Set the message ID if it wasn't set (tool call started before text)
+        currentMessageId: messageId,
       };
     }
 
@@ -256,7 +266,17 @@ function chatUIReducer(
     }
 
     case 'RESET': {
+      // Clear ALL tool invocations on reset - they should already be saved in the messages array (from DB)
+      // WebSocket state should only contain tool invocations for the CURRENT streaming message
+      // Historical tool invocations come from the messages array, not from WebSocket state
       return initialState;
+    }
+
+    case 'SET_CURRENT_MESSAGE_ID': {
+      return {
+        ...state,
+        currentMessageId: event.messageId,
+      };
     }
 
     default:
@@ -425,12 +445,31 @@ export function useWebSocketEvents(chatId: string | null) {
     dispatch({ type: 'RESET' });
   }, []);
 
+  // Set the current message ID (call when a new assistant message starts)
+  const setCurrentMessageId = useCallback((messageId: string) => {
+    dispatch({ type: 'SET_CURRENT_MESSAGE_ID', messageId });
+  }, []);
+
+  // Get tool invocations for a specific message
+  const getToolInvocationsForMessage = useCallback((messageId: string) => {
+    return state.toolInvocations.filter(inv => inv.messageId === messageId);
+  }, [state.toolInvocations]);
+
+  // Get tool invocations for the current message ONLY
+  // Must explicitly match the current message ID - no fallback to invocations without messageId
+  // This prevents tool invocations from one message bleeding into another
+  const currentMessageToolInvocations = state.currentMessageId
+    ? state.toolInvocations.filter(inv => inv.messageId === state.currentMessageId)
+    : [];
+
   return {
     // Current state
     uiState: state.uiState,
     streamingText: state.streamingText,
     toolInvocations: state.toolInvocations,
+    currentMessageToolInvocations, // Tool invocations for the current message only
     executingTools: state.executingTools,
+    currentMessageId: state.currentMessageId,
 
     // Helpers
     isThinking,
@@ -441,5 +480,7 @@ export function useWebSocketEvents(chatId: string | null) {
 
     // Actions
     resetState,
+    setCurrentMessageId,
+    getToolInvocationsForMessage,
   };
 }

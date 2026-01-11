@@ -46,7 +46,7 @@ export default function DoneAddingToCartButton({
             </p>
           </div>
         </div>
-        
+
         <Button
           onClick={async () => {
             setIsLoading(true)
@@ -57,7 +57,7 @@ export default function DoneAddingToCartButton({
             }
           }}
           disabled={disabled || isLoading}
-          className="bg-violet-600 hover:bg-violet-700 text-white px-6 py-2"
+          className="bg-primary hover:bg-primary/90 text-white px-6 py-2"
         >
           {isLoading ? (
             <Loader2 className="size-4 mr-2 animate-spin" />
@@ -67,7 +67,7 @@ export default function DoneAddingToCartButton({
           {isLoading ? "Processing..." : "Done Adding to Cart"}
         </Button>
       </div>
-      
+
       <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
         Click &quot;Done Adding to Cart&quot; to proceed with payment processing
       </p>

@@ -91,7 +91,7 @@ export function PriceRangeEmbed({ onConfirm, onSkip }: PriceRangeEmbedProps) {
         <Button
           onClick={handleConfirm}
           size="sm"
-          className="text-xs h-8 px-4 bg-purple-600 hover:bg-purple-700"
+          className="text-xs h-8 px-4 bg-primary hover:bg-primary/90"
         >
           Apply Filter
         </Button>

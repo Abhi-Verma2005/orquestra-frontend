@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { SlashIcon, PlusIcon, ShoppingBag } from "lucide-react";
+import { SlashIcon, PlusIcon, ShoppingBag, PanelLeft } from "lucide-react";
 import { useState } from "react";
 import { User } from "next-auth";
 
@@ -21,46 +21,99 @@ import { cn } from "@/lib/utils";
 interface SidebarPanelProps {
     user?: User;
     isCollapsed?: boolean;
+    onToggleCollapse?: () => void;
 }
 
-export function SidebarPanel({ user, isCollapsed }: SidebarPanelProps) {
+export function SidebarPanel({ user, isCollapsed, onToggleCollapse }: SidebarPanelProps) {
     return (
         <div className={cn("flex flex-col h-full bg-background border-r border-border", isCollapsed && "items-center")}>
             {/* Header */}
-            <div className={cn("flex items-center p-4 border-b border-border h-16", isCollapsed ? "justify-center" : "justify-between")}>
+            <div className={cn(
+                "flex border-b border-border transition-all duration-300",
+                isCollapsed ? "flex-col items-center gap-4 py-4 px-2" : "items-center justify-between p-4 h-16"
+            )}>
                 {!isCollapsed ? (
-                    <div className="flex items-center gap-2">
-                        <Logo href="/" size={24} />
-                        <span className="font-semibold text-lg tracking-tight">Orq</span>
-                    </div>
+                    <>
+                        <div className="flex items-center gap-2">
+                            <Logo href="/" size={24} />
+                            <span className="font-semibold text-lg tracking-tight text-foreground">Orq</span>
+                        </div>
+                        {onToggleCollapse && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors"
+                                onClick={onToggleCollapse}
+                            >
+                                <PanelLeft className="size-4" />
+                            </Button>
+                        )}
+                    </>
                 ) : (
-                    <Logo href="/" size={24} />
+                    <>
+                        {onToggleCollapse && (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-9 w-9 text-muted-foreground hover:text-foreground transition-colors"
+                                onClick={onToggleCollapse}
+                            >
+                                <PanelLeft className="size-5" />
+                            </Button>
+                        )}
+                        <Logo href="/" size={24} />
+                    </>
                 )}
             </div>
 
             {/* New Chat Button */}
-            <div className="px-3 pb-2 flex flex-col gap-2">
-                <Button
-                    className={cn("w-full justify-start gap-2", isCollapsed && "justify-center px-0")}
-                    variant="outline"
-                    asChild
-                >
-                    <Link href="/chat">
-                        <PlusIcon className="size-4" />
-                        {!isCollapsed && <span>New Chat</span>}
-                    </Link>
-                </Button>
-                <Button
-                    className={cn("w-full justify-start gap-2", isCollapsed && "justify-center px-0 text-muted-foreground")}
-                    variant="ghost"
-                    asChild
-                >
-                    <Link href="/marketplace">
-                        <ShoppingBag className="size-4" />
-                        {!isCollapsed && <span>Marketplace</span>}
-                    </Link>
-                </Button>
-            </div>
+            {!isCollapsed ? (
+                <div className="px-3 pb-2 pt-3 flex flex-col gap-2">
+                    <Button
+                        className="w-full justify-start gap-2"
+                        variant="secondary"
+                        asChild
+                    >
+                        <Link href="/chat">
+                            <PlusIcon className="size-4" />
+                            <span>New Chat</span>
+                        </Link>
+                    </Button>
+                    <Button
+                        className="w-full justify-start gap-2"
+                        variant="secondary"
+                        asChild
+                    >
+                        <Link href="/marketplace">
+                            <ShoppingBag className="size-4" />
+                            <span>Marketplace</span>
+                        </Link>
+                    </Button>
+                </div>
+            ) : (
+                <div className="flex flex-col items-center gap-3 py-4">
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10"
+                        asChild
+                    >
+                        <Link href="/chat">
+                            <PlusIcon className="size-5" />
+                        </Link>
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-10 w-10"
+                        asChild
+                    >
+                        <Link href="/marketplace">
+                            <ShoppingBag className="size-5" />
+                        </Link>
+                    </Button>
+                </div>
+            )}
 
             {/* Chat History */}
             <div className="flex-1 overflow-y-auto px-3 py-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">

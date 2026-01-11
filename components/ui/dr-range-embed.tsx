@@ -10,11 +10,11 @@ interface DRRangeEmbedProps {
 }
 
 export function DRRangeEmbed({ onConfirm, onSkip }: DRRangeEmbedProps) {
-  const [drRange, setDrRange] = useState({ 
-    minDR: 20, 
-    maxDR: 80, 
-    minDA: 20, 
-    maxDA: 80 
+  const [drRange, setDrRange] = useState({
+    minDR: 20,
+    maxDR: 80,
+    minDA: 20,
+    maxDA: 80
   });
 
   const handleConfirm = () => {
@@ -154,7 +154,7 @@ export function DRRangeEmbed({ onConfirm, onSkip }: DRRangeEmbedProps) {
         <Button
           onClick={handleConfirm}
           size="sm"
-          className="text-xs h-8 px-4 bg-purple-600 hover:bg-purple-700"
+          className="text-xs h-8 px-4 bg-primary hover:bg-primary/90"
         >
           Apply Filter
         </Button>

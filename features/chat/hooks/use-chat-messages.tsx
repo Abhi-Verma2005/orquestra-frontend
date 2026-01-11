@@ -31,6 +31,7 @@ interface UseChatMessagesParams {
   initialMessages: Array<Message>;
   onEvent: (type: MessageType, handler: (payload: unknown) => void) => () => void;
   realtimeToolInvocations: ToolInvocation[];
+  currentMessageToolInvocations: ToolInvocation[]; // Tool invocations for current message only
   setRightPanelContent: (content: React.ReactNode) => void;
   setIsLoading: (loading: boolean) => void;
   chatExists: boolean;
@@ -42,6 +43,8 @@ interface UseChatMessagesParams {
   lastUserMessageRef: React.MutableRefObject<string | null>;
   cartState?: { items: any[] };
   addItemToCart?: (item: any) => void;
+  setCurrentMessageId: (messageId: string) => void; // Set the current message ID for tool invocation tracking
+  currentMessageId: string | null; // Current message ID from context (may be set by tool call)
 }
 
 export function useChatMessages({
@@ -49,6 +52,7 @@ export function useChatMessages({
   initialMessages,
   onEvent,
   realtimeToolInvocations,
+  currentMessageToolInvocations,
   setRightPanelContent,
   setIsLoading,
   chatExists,
@@ -60,6 +64,8 @@ export function useChatMessages({
   lastUserMessageRef,
   cartState,
   addItemToCart,
+  setCurrentMessageId,
+  currentMessageId,
 }: UseChatMessagesParams) {
   // Clean up initial messages
   const cleanedInitialMessages = useMemo(
@@ -68,7 +74,7 @@ export function useChatMessages({
   );
 
   const [messages, setMessages] = useState<Array<Message>>(cleanedInitialMessages);
-  
+
   // Sync: When initial messages change (e.g., on page load), ensure DB state is source of truth
   // This ensures frontend state matches backend state from database
   useEffect(() => {
@@ -78,7 +84,7 @@ export function useChatMessages({
       const dbToolInvocations = cleanedInitialMessages
         .flatMap(msg => msg.toolInvocations || [])
         .filter(inv => inv.state === 'result' || inv.state === 'call');
-      
+
       // If we have tool invocations in DB but not in realtime state, that's fine
       // The realtime state is only for "loading" state which hasn't been saved yet
       // DB state (with 'result' or 'call') takes precedence
@@ -102,19 +108,27 @@ export function useChatMessages({
     const unsubscribeTextStream = onEvent(
       MessageType.TextStream,
       (payload: unknown) => {
-        const chunk = typeof payload === 'string' 
-          ? payload 
+        const chunk = typeof payload === 'string'
+          ? payload
           : ((payload as any).content || (payload as any).text || (payload as any).chunk || "");
-        
+
         if (chunk) {
           setIsLoading(true);
-          
+
           if (!currentAssistantMessageIdRef.current) {
             // FIRST CHUNK: Create new assistant message
-            const messageId = `stream_${Date.now()}`;
+            // Use existing message ID from context if set (e.g., by a prior tool call)
+            // Otherwise generate a new one
+            const messageId = currentMessageId || `stream_${Date.now()}`;
             currentAssistantMessageIdRef.current = messageId;
             streamingContentRef.current = chunk;
-            
+
+            // Only call setCurrentMessageId if we generated a new ID
+            // (if currentMessageId was already set, it's already in context)
+            if (!currentMessageId) {
+              setCurrentMessageId(messageId);
+            }
+
             setMessages((prev) => [
               ...prev,
               {
@@ -127,7 +141,7 @@ export function useChatMessages({
             // SUBSEQUENT CHUNKS: Update existing message
             const messageId = currentAssistantMessageIdRef.current;
             streamingContentRef.current += chunk;
-            
+
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === messageId ? { ...msg, content: streamingContentRef.current } : msg
@@ -157,11 +171,10 @@ export function useChatMessages({
 
             if (existingIndex >= 0) {
               const updated = [...prev];
-              
-              // Attach ALL current realtimeToolInvocations to this message
-              // Since resetUIState() is called when user sends a new message,
-              // all tool invocations in the context belong to this message
-              const messageToolInvocations = realtimeToolInvocations.map((realtimeInv) => {
+
+              // Use currentMessageToolInvocations which only contains invocations for THIS message
+              // This fixes the issue where tool invocations from other messages would leak
+              const messageToolInvocations = currentMessageToolInvocations.map((realtimeInv) => {
                 return {
                   toolCallId: realtimeInv.id,
                   toolName: realtimeInv.name,
@@ -174,7 +187,7 @@ export function useChatMessages({
               // Merge with existing tool invocations (avoid duplicates)
               const existingToolInvocations = updated[existingIndex].toolInvocations || [];
               const existingToolCallIds = new Set(existingToolInvocations.map(inv => inv.toolCallId));
-              
+
               // Only add tool invocations that don't already exist
               const newToolInvocations = messageToolInvocations.filter(
                 inv => !existingToolCallIds.has(inv.toolCallId)
@@ -333,7 +346,7 @@ export function useChatMessages({
               if (chatMsg.id && msg.id === chatMsg.id) {
                 return true;
               }
-              
+
               // Fallback: check by content (for messages without IDs)
               if (msg.role !== "assistant" || normalizeContent(msg.content) !== normalizedContent) {
                 return false;
@@ -377,7 +390,7 @@ export function useChatMessages({
               const lastAssistant = updated[lastAssistantIndex];
               const existingToolInvocations = lastAssistant.toolInvocations || [];
               const existingToolCallIds = new Set(existingToolInvocations.map(inv => inv.toolCallId));
-              
+
               // Convert realtimeToolInvocations to message format
               const messageToolInvocations = realtimeToolInvocations
                 .filter(realtimeInv => !existingToolCallIds.has(realtimeInv.id))
@@ -454,26 +467,16 @@ export function useChatMessages({
           if (!toolParams) {
             return; // No params available yet
           }
-          
+
           const title = toolParams.title as string | undefined;
           const content = toolParams.content as string | undefined;
-          
+
           if (!title || !content) {
             return; // Required fields missing
           }
-          
-          setRightPanelContent(
-            <div className="flex flex-col h-full bg-[#121212]">
-              <div className="p-6 overflow-y-auto">
-                <h1 className="text-2xl font-bold mb-6 text-[#E0E0E0] border-b border-[#333333] pb-4">
-                  {title}
-                </h1>
-                <div className="prose prose-invert max-w-none">
-                  <Markdown>{content}</Markdown>
-                </div>
-              </div>
-            </div>
-          );
+
+          // No longer automatically opening the right panel.
+          // The ToolInvocationCard will handle this when clicked.
         }
 
         // Add function call as a tool invocation in the last assistant message
@@ -655,14 +658,14 @@ export function useChatMessages({
           const averageDR =
             drValues.length > 0
               ? Math.round(
-                  drValues.reduce((sum, dr) => sum + dr, 0) / drValues.length
-                )
+                drValues.reduce((sum, dr) => sum + dr, 0) / drValues.length
+              )
               : 0;
           const averageDA =
             daValues.length > 0
               ? Math.round(
-                  daValues.reduce((sum, da) => sum + da, 0) / daValues.length
-                )
+                daValues.reduce((sum, da) => sum + da, 0) / daValues.length
+              )
               : 0;
           const priceRange =
             prices.length > 0
@@ -912,6 +915,9 @@ export function useChatMessages({
     chatExists,
     resetStreamingState,
     realtimeToolInvocations,
+    currentMessageToolInvocations,
+    setCurrentMessageId,
+    currentMessageId,
     setIsLoading,
     isGroupChat,
     setIsGroupChat,

@@ -85,7 +85,7 @@ export const Message = ({
     isThinking,
     isExecutingTool,
     executingTools,
-    toolInvocations: realtimeToolInvocations,
+    currentMessageToolInvocations, // Use message-specific invocations instead of all
     uiState,
   } = useChatUIState();
 
@@ -383,10 +383,11 @@ export const Message = ({
         {/* Tool Invocations - Show real-time for last message, historical for others - Show BEFORE content */}
         {(() => {
           // For the last message during streaming, show real-time invocations from context
-          if (isLastMessage && role === "assistant" && realtimeToolInvocations.length > 0) {
+          // Using currentMessageToolInvocations which only contains invocations for THIS message
+          if (isLastMessage && role === "assistant" && currentMessageToolInvocations.length > 0) {
             return (
               <div className="flex flex-col gap-3 mb-4">
-                {realtimeToolInvocations.map((invocation) => (
+                {currentMessageToolInvocations.map((invocation) => (
                   <ToolInvocationCard key={invocation.id} invocation={invocation} />
                 ))}
               </div>
@@ -411,10 +412,13 @@ export const Message = ({
                   // Use new card component for simple tools like render_content
                   if (!needsSpecialHandling) {
                     // Convert old format to new ToolInvocation format
+                    // If there's a result OR state is "result", show as complete
+                    // This handles cases where state wasn't properly updated but result exists
+                    const isComplete = toolInvocation.state === "result" || toolInvocation.result != null;
                     const cardInvocation = {
                       id: toolInvocation.toolCallId,
                       name: toolName,
-                      state: (toolInvocation.state === "result" ? "complete" : "loading") as "loading" | "complete",
+                      state: (isComplete ? "complete" : "loading") as "loading" | "complete",
                       args: toolInvocation.args,
                       result: toolInvocation.result,
                       timestamp: Date.now(),

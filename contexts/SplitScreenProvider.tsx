@@ -8,6 +8,7 @@ interface SplitScreenContextType {
   rightPanelWidth: number;
   leftPanelWidth: number;
   setRightPanelContent: (content: ReactNode) => void;
+  openRightPanel: () => void;
   closeRightPanel: () => void;
   setRightPanelWidth: (width: number) => void;
   setLeftPanelWidth: (width: number) => void;
@@ -17,26 +18,34 @@ interface SplitScreenContextType {
 const SplitScreenContext = createContext<SplitScreenContextType | undefined>(undefined);
 
 export function SplitScreenProvider({ children }: { children: ReactNode }) {
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('isRightPanelOpen') === 'true';
+    }
+    return false;
+  });
   const [rightPanelContent, setRightPanelContent] = useState<ReactNode | null>(null);
   const [rightPanelWidth, setRightPanelWidth] = useState(500); // Default width in pixels
   const [leftPanelWidth, setLeftPanelWidth] = useState(0); // Will be calculated dynamically
 
   const handleSetRightPanelContent = (newContent: ReactNode) => {
     setRightPanelContent(newContent);
-    setIsRightPanelOpen(true);
+    // Removed automatic opening of right panel
+    // setIsRightPanelOpen(true);
   };
 
   const closeRightPanel = () => {
     setIsRightPanelOpen(false);
+    localStorage.setItem('isRightPanelOpen', 'false');
     setRightPanelContent(null);
   };
 
   const toggleRightPanel = () => {
-    if (isRightPanelOpen) {
-      closeRightPanel();
-    } else {
-      setIsRightPanelOpen(true);
+    const newState = !isRightPanelOpen;
+    setIsRightPanelOpen(newState);
+    localStorage.setItem('isRightPanelOpen', String(newState));
+    if (!newState) {
+      setRightPanelContent(null);
     }
   };
 
@@ -51,6 +60,11 @@ export function SplitScreenProvider({ children }: { children: ReactNode }) {
     setLeftPanelWidth(width);
   };
 
+  const openRightPanel = () => {
+    setIsRightPanelOpen(true);
+    localStorage.setItem('isRightPanelOpen', 'true');
+  };
+
   return (
     <SplitScreenContext.Provider value={{
       isRightPanelOpen,
@@ -58,6 +72,7 @@ export function SplitScreenProvider({ children }: { children: ReactNode }) {
       rightPanelWidth,
       leftPanelWidth,
       setRightPanelContent: handleSetRightPanelContent,
+      openRightPanel,
       closeRightPanel,
       setRightPanelWidth: handleSetRightPanelWidth,
       setLeftPanelWidth: handleSetLeftPanelWidth,
