@@ -1,6 +1,6 @@
-import { MarketplaceHero } from "@/components/marketplace/MarketplaceHero";
 import { FilterSidebar } from "@/components/marketplace/FilterSidebar";
 import { MarketplaceGrid } from "@/components/marketplace/MarketplaceGrid";
+import { MarketplaceHero } from "@/components/marketplace/MarketplaceHero";
 
 export default function MarketplacePage() {
     return (

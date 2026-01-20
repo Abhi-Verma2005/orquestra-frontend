@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
 import { Button } from "../ui/button";
 
@@ -18,7 +19,7 @@ export function RightPanel() {
           variant="ghost"
           size="icon"
           onClick={closeRightPanel}
-          className="h-7 w-7 rounded-full hover:bg-muted"
+          className="size-7 rounded-full hover:bg-muted"
         >
           <X className="size-4" />
         </Button>

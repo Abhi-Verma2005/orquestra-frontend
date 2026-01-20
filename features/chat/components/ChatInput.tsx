@@ -22,7 +22,10 @@
 
 'use client';
 
+import { Dispatch, SetStateAction } from 'react';
+
 import type { Message, Attachment } from 'ai';
+
 import { MultimodalInput } from '@/components/custom/multimodal-input';
 
 interface ChatInputProps {
@@ -33,9 +36,11 @@ interface ChatInputProps {
   stop: () => void;
   isCreatingChat: boolean;
   attachments: Array<Attachment>;
-  setAttachments: (attachments: Array<Attachment>) => void;
+  setAttachments: Dispatch<SetStateAction<Array<Attachment>>>;
   messages: Array<Message>;
   append: (message: Partial<Message>) => Promise<string | null | undefined>;
+  selectedAgent: { id: string; name: string; description?: string } | null;
+  setSelectedAgent: (agent: { id: string; name: string; description?: string } | null) => void;
 }
 
 export function ChatInput({
@@ -49,6 +54,8 @@ export function ChatInput({
   setAttachments,
   messages,
   append,
+  selectedAgent,
+  setSelectedAgent,
 }: ChatInputProps) {
   return (
     <form className="flex flex-row gap-2 relative items-end w-full md:max-w-[650px] max-w-[calc(100dvw-32px)] px-4 mx-auto">
@@ -63,6 +70,8 @@ export function ChatInput({
         setAttachments={setAttachments}
         messages={messages}
         append={append}
+        selectedAgent={selectedAgent}
+        setSelectedAgent={setSelectedAgent}
       />
     </form>
   );

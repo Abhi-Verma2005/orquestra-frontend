@@ -14,26 +14,28 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle, ImperativePanelHandle } from 'react-resizable-panels';
-import type { Message, Attachment } from 'ai';
 
-import { cn } from '@/lib/utils';
+
 import { MultimodalInput } from '@/components/custom/multimodal-input';
 import { RightPanel } from '@/components/custom/RightPanel';
-import { useEnhancedClaudeScroll } from '@/hooks/use-scroll-to-bottom';
 import { useCart } from '@/contexts/cart-context';
 import { useChatUIState } from '@/contexts/chat-ui-state-context';
 import { useSplitScreen } from '@/contexts/SplitScreenProvider';
 import { useUserInfo } from '@/contexts/UserInfoProvider';
 import { useWebSocket, MessageType } from '@/contexts/websocket-context';
+import { useEnhancedClaudeScroll } from '@/hooks/use-scroll-to-bottom';
+import { cn } from '@/lib/utils';
 
+import { ChatHeader } from './ChatHeader';
+import { ChatInput } from './ChatInput';
+import { ChatMessages } from './ChatMessages';
+import { SidebarPanel } from './SidebarPanel';
 import { useChatDrafts } from '../hooks/use-chat-drafts';
 import { useChatJoin } from '../hooks/use-chat-join';
 import { useChatMessages } from '../hooks/use-chat-messages';
 import { useChatSubmission } from '../hooks/use-chat-submission';
-import { ChatHeader } from './ChatHeader';
-import { ChatMessages } from './ChatMessages';
-import { ChatInput } from './ChatInput';
-import { SidebarPanel } from './SidebarPanel';
+
+import type { Message, Attachment } from 'ai';
 
 interface ChatContentProps {
   id: string | null;
@@ -72,19 +74,49 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
   // Local state
   const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
-  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('isLeftSidebarCollapsed') === 'true';
-    }
-    return false;
-  });
+  const [isLeftSidebarCollapsed, setIsLeftSidebarCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('isLeftSidebarCollapsed', String(isLeftSidebarCollapsed));
-  }, [isLeftSidebarCollapsed]);
+    setMounted(true);
+    const saved = localStorage.getItem('isLeftSidebarCollapsed');
+    if (saved !== null) {
+      setIsLeftSidebarCollapsed(saved === 'true');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mounted) {
+      localStorage.setItem('isLeftSidebarCollapsed', String(isLeftSidebarCollapsed));
+    }
+  }, [isLeftSidebarCollapsed, mounted]);
   const [isGroupChat, setIsGroupChat] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [chatExists, setChatExists] = useState(!!id);
+  const [selectedAgent, setSelectedAgent] = useState<{ id: string; name: string; description?: string } | null>(null);
+
+  // Persist agent selection
+  useEffect(() => {
+    if (mounted) {
+      const savedAgent = localStorage.getItem('selectedAgent');
+      if (savedAgent) {
+        try {
+          setSelectedAgent(JSON.parse(savedAgent));
+        } catch (e) {
+          console.error("Failed to parse saved agent:", e);
+        }
+      }
+    }
+  }, [mounted]);
+
+  const handleSetSelectedAgent = useCallback((agent: { id: string; name: string; description?: string } | null) => {
+    setSelectedAgent(agent);
+    if (agent) {
+      localStorage.setItem('selectedAgent', JSON.stringify(agent));
+    } else {
+      localStorage.removeItem('selectedAgent');
+    }
+  }, []);
 
   // Refs
   const stopRequestedRef = useRef(false);
@@ -144,10 +176,13 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
     setIsOwner,
     userInfo: userInfo ?? undefined,
     stopRequestedRef,
+    setSelectedAgent: handleSetSelectedAgent,
   });
 
-  // Sync panel state on mount
+  // Sync panel state with local state
   useEffect(() => {
+    if (!mounted) return;
+
     const panel = leftPanelRef.current;
     if (panel) {
       if (isLeftSidebarCollapsed) {
@@ -156,7 +191,7 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
         panel.expand();
       }
     }
-  }, []);
+  }, [isLeftSidebarCollapsed, mounted]);
   const { handleSubmit, isCreatingChat } = useChatSubmission({
     input,
     isLoading,
@@ -177,6 +212,7 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
     stopRequestedRef,
     lastUserMessageRef,
     cartState,
+    selectedAgent,
   });
 
   // Stop generation
@@ -289,17 +325,17 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
           onExpand={() => setIsLeftSidebarCollapsed(false)}
           className={cn(
             "flex flex-col border-r border-border transition-all duration-300",
-            isLeftSidebarCollapsed ? "min-w-[50px]" : ""
+            mounted && isLeftSidebarCollapsed ? "min-w-[50px]" : ""
           )}
         >
           <SidebarPanel
             user={user}
-            isCollapsed={isLeftSidebarCollapsed}
+            isCollapsed={mounted && isLeftSidebarCollapsed}
             onToggleCollapse={handleToggleSidebar}
           />
         </Panel>
 
-        <PanelResizeHandle className="w-[1px] bg-border hover:bg-muted transition-colors" />
+        <PanelResizeHandle className="w-px bg-border hover:bg-muted transition-colors" />
 
         {/* Main Chat Area */}
         <Panel
@@ -346,6 +382,8 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
               setAttachments={setAttachments}
               messages={messages}
               append={append}
+              selectedAgent={selectedAgent}
+              setSelectedAgent={handleSetSelectedAgent}
             />
           </div>
         </Panel>
@@ -353,7 +391,7 @@ export function ChatContent({ id, initialMessages, user }: ChatContentProps) {
         {/* Right Panel */}
         {isRightPanelOpen && (
           <>
-            <PanelResizeHandle className="w-[1px] bg-border hover:bg-muted transition-colors relative z-10" />
+            <PanelResizeHandle className="w-px bg-border hover:bg-muted transition-colors relative z-10" />
             <Panel
               defaultSize={20}
               minSize={15}

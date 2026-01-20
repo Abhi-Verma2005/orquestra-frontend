@@ -19,11 +19,18 @@
 
 'use client';
 
-import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Message } from 'ai';
-import type { ChatMessage } from '@/contexts/websocket-context';
+import { useSession } from 'next-auth/react';
+import { useCallback, useState } from 'react';
+
+import { useAgents } from './use-agents';
 import { getPerChatDraftKey, NEW_CHAT_DRAFT_KEY } from '../utils/draft-storage';
+
+import type { ChatMessage } from '@/contexts/websocket-context';
+import type { Message } from 'ai';
+
+import { getBackendUrl } from '@/lib/utils';
+
 
 interface UseChatSubmissionParams {
   input: string;
@@ -45,6 +52,7 @@ interface UseChatSubmissionParams {
   stopRequestedRef: React.MutableRefObject<boolean>;
   lastUserMessageRef: React.MutableRefObject<string | null>;
   cartState: { items: any[] };
+  selectedAgent: { id: string; name: string; description?: string } | null;
 }
 
 export function useChatSubmission({
@@ -67,9 +75,12 @@ export function useChatSubmission({
   stopRequestedRef,
   lastUserMessageRef,
   cartState,
+  selectedAgent,
 }: UseChatSubmissionParams) {
   const router = useRouter();
+  const { data: session } = useSession();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const { agents } = useAgents();
 
   const handleSubmit = useCallback(
     async (event?: { preventDefault?: () => void }) => {
@@ -93,7 +104,12 @@ export function useChatSubmission({
       let currentIsGroupChat = isGroupChat;
       if (id && user && !hasAiPrefix) {
         try {
-          const response = await fetch(`/api/chat/info?id=${id}`);
+          const backendUrl = getBackendUrl();
+          const response = await fetch(`${backendUrl}/api/chat/info?id=${id}`, {
+            headers: {
+              Authorization: (session as any)?.accessToken ? `Bearer ${(session as any).accessToken}` : "",
+            },
+          });
           if (response.ok) {
             const data = await response.json();
             currentIsGroupChat = data.isGroupChat || false;
@@ -133,9 +149,20 @@ export function useChatSubmission({
       if (messages.length === 0) {
         try {
           setIsCreatingChat(true);
-          const res = await fetch("/api/chat/create", {
+          const backendUrl = getBackendUrl();
+
+          // Debug logging
+          console.log("[DEBUG] Session state:", session);
+          console.log("[DEBUG] Access token:", (session as any)?.accessToken);
+          const authHeader = (session as any)?.accessToken ? `Bearer ${(session as any).accessToken}` : "";
+          console.log("[DEBUG] Authorization header:", authHeader);
+
+          const res = await fetch(`${backendUrl}/api/chat/create`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: authHeader,
+            },
             body: JSON.stringify({ message: userMsg }),
           });
           if (!res.ok) {
@@ -159,16 +186,17 @@ export function useChatSubmission({
 
           // Prepare cart data and selected documents to store with pending message
           try {
-            // Store pending message with cartData
+            // Store pending message with selected agent
             const pendingData = {
               message: userMsg,
+              agent_id: selectedAgent?.id,
             };
             sessionStorage.setItem(
               `pending_first_message_${newId}`,
               JSON.stringify(pendingData)
             );
             localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
-          } catch {}
+          } catch { }
 
           setIsLoading(true);
           stopRequestedRef.current = false;
@@ -228,6 +256,7 @@ export function useChatSubmission({
         chat_array: context,
         is_ai_message: isAiMessage, // true if: not group chat OR has "@ai" prefix
         is_group_chat: currentIsGroupChat, // Tell backend if this is a group chat (use latest value)
+        agent_id: selectedAgent?.id, // Use the persistent selected agent
       });
 
       setInput("");
@@ -237,7 +266,7 @@ export function useChatSubmission({
         try {
           localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
           localStorage.removeItem(getPerChatDraftKey(id));
-        } catch {}
+        } catch { }
       }
     },
     [
@@ -261,6 +290,8 @@ export function useChatSubmission({
       setChatExists,
       stopRequestedRef,
       lastUserMessageRef,
+      session,
+      selectedAgent,
     ]
   );
 

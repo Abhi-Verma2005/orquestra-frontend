@@ -105,8 +105,8 @@ export function cleanInitialMessages(
         );
         if (matchingInvocation) {
           // Update the state to 'result' and add the result
-          matchingInvocation.state = 'result';
-          matchingInvocation.result = currentMsg.content;
+          (matchingInvocation as any).state = 'result';
+          (matchingInvocation as any).result = currentMsg.content;
         }
       }
       // Don't add tool messages to the cleaned array - they're embedded in assistant messages

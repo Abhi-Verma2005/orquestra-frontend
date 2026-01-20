@@ -1,9 +1,10 @@
 "use client";
 
-import { useSplitScreen } from "@/contexts/SplitScreenProvider";
-import type { ToolInvocation } from "@/types/chat-ui-state";
 import TextShimmer from "@/components/forgeui/text-shimmer";
 import { ToolSummaryCard } from "@/components/tools/tool-summary-card";
+import { useSplitScreen } from "@/contexts/SplitScreenProvider";
+
+import type { ToolInvocation } from "@/types/chat-ui-state";
 
 interface ToolInvocationCardProps {
   invocation: ToolInvocation;
@@ -102,10 +103,10 @@ export function ToolInvocationCard({ invocation }: ToolInvocationCardProps) {
   }
 
   // Show populated card with args (and maybe result)
-  const renderContentArgs = invocation.args as { title?: string; content?: string };
+  const renderContentArgs = invocation.args as { title?: string; content?: string } | undefined;
 
   // Special rendering for render_content tool
-  if (invocation.name === 'render_content' && renderContentArgs.title && renderContentArgs.content) {
+  if (invocation.name === 'render_content' && renderContentArgs?.title && renderContentArgs?.content) {
     return (
       <div
         className={`w-full max-w-sm ${isComplete ? 'cursor-pointer hover:shadow-lg transition-shadow' : ''}`}

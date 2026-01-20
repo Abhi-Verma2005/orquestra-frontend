@@ -151,7 +151,7 @@ export default function LineChart({
 
   return (
     <div className="grow flex flex-col">
-      <div className="flex-shrink-0 px-2 pt-2">
+      <div className="shrink-0 px-2 pt-2">
         <div className="flex items-center justify-between">
           <div>
             <span ref={chartValue} className="text-2xl font-bold text-gray-900 dark:text-gray-100">$0</span>

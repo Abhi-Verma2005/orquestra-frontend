@@ -28,8 +28,8 @@ export function normalizeContent(content: unknown): string {
       .map((block) => {
         if (typeof block === "string") return block;
         if (block && typeof block === "object") {
-          if (block.type === "text" && block.text) return block.text;
-          if (block.content) return normalizeContent(block.content);
+          if ((block as any).type === "text" && (block as any).text) return (block as any).text;
+          if ((block as any).content) return normalizeContent((block as any).content);
         }
         return "";
       })
@@ -37,8 +37,8 @@ export function normalizeContent(content: unknown): string {
   }
   if (content && typeof content === "object") {
     // Handle object with content property
-    if (content.content) return normalizeContent(content.content);
-    if (content.text) return normalizeContent(content.text);
+    if ((content as any).content) return normalizeContent((content as any).content);
+    if ((content as any).text) return normalizeContent((content as any).text);
     // If it's an object without content/text, stringify it
     return JSON.stringify(content);
   }

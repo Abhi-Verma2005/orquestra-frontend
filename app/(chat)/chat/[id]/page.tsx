@@ -2,9 +2,9 @@ import { CoreMessage, Message } from "ai";
 import { notFound } from "next/navigation";
 
 import { auth } from "@/app/(auth)/auth";
-import { ChatContainer as PreviewChat } from "@/features/chat";
 import { getChatById, isUserInChat } from "@/db/queries";
 import { Chat } from "@/db/schema";
+import { ChatContainer as PreviewChat } from "@/features/chat";
 import { convertToUIMessages } from "@/lib/utils";
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {

@@ -2,6 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { createContext, useContext, useEffect, useState } from "react";
+import { getBackendUrl } from "@/lib/utils";
 
 interface UserInfo {
   id: string;
@@ -44,17 +45,27 @@ export function UserInfoProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/user/info?userId=${session.user.id}`);
-      
+      const backendUrl = getBackendUrl();
+      const url = `${backendUrl}/api/user/info?userId=${session.user.id}`;
+      console.log('Fetching user info from:', url);
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: (session as any)?.accessToken ? `Bearer ${(session as any).accessToken}` : "",
+        },
+      });
+
       if (!response.ok) {
-        throw new Error('Failed to fetch user info');
+        const errorText = await response.text();
+        console.error('Fetch error response:', response.status, errorText);
+        throw new Error(`Failed to fetch user info: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
       setUserInfo(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
-      console.error('Error fetching user info:', err);
+      console.error('Error fetching user info details:', err);
     } finally {
       setIsLoading(false);
     }
@@ -69,12 +80,12 @@ export function UserInfoProvider({ children }: { children: React.ReactNode }) {
   }, [session?.user?.id, status]);
 
   return (
-    <UserInfoContext.Provider 
-      value={{ 
-        userInfo, 
-        isLoading, 
-        error, 
-        refetch: fetchUserInfo 
+    <UserInfoContext.Provider
+      value={{
+        userInfo,
+        isLoading,
+        error,
+        refetch: fetchUserInfo
       }}
     >
       {children}

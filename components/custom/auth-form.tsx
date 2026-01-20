@@ -11,40 +11,43 @@ export function AuthForm({
   defaultEmail?: string;
 }) {
   return (
-    <form action={action} className="flex flex-col gap-4 px-4 sm:px-16">
-      <div className="flex flex-col gap-2">
-        <Label
-          htmlFor="email"
-          className="text-zinc-600 font-normal dark:text-zinc-400"
-        >
-          Email Address
-        </Label>
+    <form action={action} className="flex flex-col gap-5 px-4 sm:px-8">
+      <div className="flex flex-col gap-4">
+        <div className="space-y-2">
+          <Label
+            htmlFor="email"
+            className="text-[13px] text-muted-foreground/80"
+          >
+            Email Address
+          </Label>
+          <Input
+            id="email"
+            name="email"
+            className="h-11 rounded-lg border-border/30 bg-[#0C0C0D] text-[14px] text-foreground placeholder:text-muted-foreground/50 focus:border-border/50 focus:ring-0"
+            type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
+            required
+            defaultValue={defaultEmail}
+          />
+        </div>
 
-        <Input
-          id="email"
-          name="email"
-          className="bg-muted text-md md:text-sm border-none"
-          type="email"
-          placeholder="user@acme.com"
-          autoComplete="email"
-          required
-          defaultValue={defaultEmail}
-        />
-
-        <Label
-          htmlFor="password"
-          className="text-zinc-600 font-normal dark:text-zinc-400"
-        >
-          Password
-        </Label>
-
-        <Input
-          id="password"
-          name="password"
-          className="bg-muted text-md md:text-sm border-none"
-          type="password"
-          required
-        />
+        <div className="space-y-2">
+          <Label
+            htmlFor="password"
+            className="text-[13px] text-muted-foreground/80"
+          >
+            Password
+          </Label>
+          <Input
+            id="password"
+            name="password"
+            className="h-11 rounded-lg border-border/30 bg-[#0C0C0D] text-[14px] text-foreground placeholder:text-muted-foreground/50 focus:border-border/50 focus:ring-0"
+            type="password"
+            placeholder="••••••••"
+            required
+          />
+        </div>
       </div>
 
       {children}

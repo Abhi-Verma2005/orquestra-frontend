@@ -5,16 +5,17 @@ import { useRouter } from "next/navigation";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
-import { ChatMembers } from "./chat-members";
-import { InviteLinkDialog } from "./invite-link-dialog";
-import { LeftSidebar } from "./left-sidebar";
 import { Markdown } from "@/components/chat/Markdown";
 import { Message as PreviewMessage } from "@/components/chat/Message";
-import { MultimodalInput } from "./multimodal-input";
-import { RightPanel } from "./RightPanel";
 import {
   useEnhancedClaudeScroll,
 } from "@/hooks/use-scroll-to-bottom";
+
+import { ChatMembers } from "./chat-members";
+import { InviteLinkDialog } from "./invite-link-dialog";
+import { LeftSidebar } from "./left-sidebar";
+import { MultimodalInput } from "./multimodal-input";
+import { RightPanel } from "./RightPanel";
 import { useCart } from "../../contexts/cart-context";
 import { ChatUIStateProvider, useChatUIState } from "../../contexts/chat-ui-state-context";
 import { useSplitScreen } from "../../contexts/SplitScreenProvider";
@@ -27,6 +28,7 @@ import {
   FunctionCallStartPayload,
   FunctionCallEndPayload,
 } from "../../contexts/websocket-context";
+import { getBackendUrl } from "../../lib/utils";
 const getPerChatDraftKey = (chatId: string) => `chat_draft_${chatId}`;
 const NEW_CHAT_DRAFT_KEY = `chat_draft_new`;
 
@@ -255,7 +257,8 @@ function ChatContent({
   useEffect(() => {
     const loadChatInfo = async () => {
       try {
-        const response = await fetch(`/api/chat/info?id=${id}`);
+        const backendUrl = getBackendUrl();
+        const response = await fetch(`${backendUrl}/api/chat/info?id=${id}`);
         if (response.ok) {
           const data = await response.json();
           setIsGroupChat(data.isGroupChat || false);
@@ -358,8 +361,8 @@ function ChatContent({
           },
         };
 
-        
-        
+
+
         sendMessage(messagePayload);
         setIsLoading(true);
         stopRequestedRef.current = false;
@@ -372,7 +375,7 @@ function ChatContent({
       sessionStorage.removeItem(key);
       // Clear any leftover new-chat draft
       localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
-    } catch {}
+    } catch { }
   }, [id, wsState, sendMessage, scrollToMessage, user]);
 
   // Handle WebSocket events
@@ -381,19 +384,19 @@ function ChatContent({
     const unsubscribeTextStream = onEvent(
       MessageType.TextStream,
       (payload: unknown) => {
-        const chunk = typeof payload === 'string' 
-          ? payload 
+        const chunk = typeof payload === 'string'
+          ? payload
           : ((payload as any).content || (payload as any).text || (payload as any).chunk || "");
-        
+
         if (chunk) {
           setIsLoading(true);
-          
+
           if (!currentAssistantMessageIdRef.current) {
             // FIRST CHUNK: Create new assistant message
             const messageId = `stream_${Date.now()}`;
             currentAssistantMessageIdRef.current = messageId;
             streamingContentRef.current = chunk;
-            
+
             setMessages((prev) => [
               ...prev,
               {
@@ -406,7 +409,7 @@ function ChatContent({
             // SUBSEQUENT CHUNKS: Update existing message
             const messageId = currentAssistantMessageIdRef.current;
             streamingContentRef.current += chunk;
-            
+
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === messageId ? { ...msg, content: streamingContentRef.current } : msg
@@ -436,7 +439,7 @@ function ChatContent({
 
             if (existingIndex >= 0) {
               const updated = [...prev];
-              
+
               // Convert realtimeToolInvocations to message format and add to message
               const messageToolInvocations = realtimeToolInvocations.map((realtimeInv) => {
                 return {
@@ -451,7 +454,7 @@ function ChatContent({
               // Merge with existing tool invocations (avoid duplicates)
               const existingToolInvocations = updated[existingIndex].toolInvocations || [];
               const existingToolCallIds = new Set(existingToolInvocations.map(inv => inv.toolCallId));
-              
+
               // Only add tool invocations that don't already exist
               const newToolInvocations = messageToolInvocations.filter(
                 inv => !existingToolCallIds.has(inv.toolCallId)
@@ -520,7 +523,8 @@ function ChatContent({
 
           // If a user joined, reload chat info to update isGroupChat status
           if (normalizedContent.includes("joined the chat") && id && user) {
-            fetch(`/api/chat/info?id=${id}`)
+            const backendUrl = getBackendUrl();
+            fetch(`${backendUrl}/api/chat/info?id=${id}`)
               .then((response) => {
                 if (response.ok) {
                   return response.json();
@@ -639,7 +643,7 @@ function ChatContent({
               const lastAssistant = updated[lastAssistantIndex];
               const existingToolInvocations = lastAssistant.toolInvocations || [];
               const existingToolCallIds = new Set(existingToolInvocations.map(inv => inv.toolCallId));
-              
+
               // Convert realtimeToolInvocations to message format
               const messageToolInvocations = realtimeToolInvocations
                 .filter(realtimeInv => !existingToolCallIds.has(realtimeInv.id))
@@ -730,14 +734,14 @@ function ChatContent({
           if (!toolParams) {
             return; // No params available yet
           }
-          
+
           const title = toolParams.title as string | undefined;
           const content = toolParams.content as string | undefined;
-          
+
           if (!title || !content) {
             return; // Required fields missing
           }
-          
+
           setRightPanelContent(
             <div className="flex flex-col h-full bg-[#121212]">
               <div className="p-6 overflow-y-auto">
@@ -1043,14 +1047,14 @@ function ChatContent({
           const averageDR =
             drValues.length > 0
               ? Math.round(
-                  drValues.reduce((sum, dr) => sum + dr, 0) / drValues.length
-                )
+                drValues.reduce((sum, dr) => sum + dr, 0) / drValues.length
+              )
               : 0;
           const averageDA =
             daValues.length > 0
               ? Math.round(
-                  daValues.reduce((sum, da) => sum + da, 0) / daValues.length
-                )
+                daValues.reduce((sum, da) => sum + da, 0) / daValues.length
+              )
               : 0;
           const priceRange =
             prices.length > 0
@@ -1413,7 +1417,7 @@ function ChatContent({
               JSON.stringify(pendingData)
             );
             localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
-          } catch {}
+          } catch { }
 
           setIsLoading(true);
           stopRequestedRef.current = false;
@@ -1482,7 +1486,7 @@ function ChatContent({
         try {
           localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
           localStorage.removeItem(getPerChatDraftKey(id));
-        } catch {}
+        } catch { }
       }
     },
     [
@@ -1507,7 +1511,7 @@ function ChatContent({
     setIsLoading(false);
     try {
       (wsCtx as any).sendStop?.(id);
-    } catch {}
+    } catch { }
   }, [id, wsCtx]);
 
   // Append message (for compatibility)
@@ -1556,7 +1560,7 @@ function ChatContent({
             if (id) {
               localStorage.removeItem(getPerChatDraftKey(id));
             }
-          } catch {}
+          } catch { }
         }
         setInput("");
       }
@@ -1579,13 +1583,13 @@ function ChatContent({
 
   return (
     <div className="h-dvh bg-background relative">
-        {/* Menu button - positioned absolutely */}
-        <div className="absolute left-4 top-4 z-30">
-          <LeftSidebar user={user} onCollapseChange={setIsLeftSidebarCollapsed} />
-        </div>
+      {/* Menu button - positioned absolutely */}
+      <div className="absolute left-4 top-4 z-30">
+        <LeftSidebar user={user} onCollapseChange={setIsLeftSidebarCollapsed} />
+      </div>
 
       {/* Panel Group for resizable layout */}
-      <div className="h-full w-full">
+      <div className="size-full">
         <PanelGroup direction="horizontal" className="size-full">
           {/* Main Chat Area */}
           <Panel
@@ -1594,11 +1598,10 @@ function ChatContent({
             className="flex flex-col relative"
           >
             <div
-              className={`flex flex-col pb-2 md:pb-4 transition-all duration-300 h-full ${
-                messages.length === 0
-                  ? "justify-center items-center"
-                  : "justify-between"
-              }`}
+              className={`flex flex-col pb-2 md:pb-4 transition-all duration-300 h-full ${messages.length === 0
+                ? "justify-center items-center"
+                : "justify-between"
+                }`}
             >
               {/* Invite button and other chat actions - show in existing chats (when id exists), not on home page */}
               {id && (
@@ -1620,15 +1623,14 @@ function ChatContent({
               {messages.length > 0 && (
                 <div
                   ref={messagesContainerRef}
-                  className="flex flex-col gap-4 w-full h-full items-center overflow-y-auto px-4"
+                  className="flex flex-col gap-4 size-full items-center overflow-y-auto px-4"
                 >
                   {messages.map((message, index) => (
                     <div
                       id={`msg-${message.id}`}
                       key={message.id}
-                      className={`w-full flex justify-center ${
-                        index === 0 ? "pt-20" : ""
-                      }`}
+                      className={`w-full flex justify-center ${index === 0 ? "pt-20" : ""
+                        }`}
                     >
                       <PreviewMessage
                         chatId={id!}

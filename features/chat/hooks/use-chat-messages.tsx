@@ -20,11 +20,15 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { Message, ToolInvocation } from 'ai';
-import { MessageType, type ChatMessage, FunctionName } from '@/contexts/websocket-context';
+
 import { Markdown } from '@/components/chat/Markdown';
+import { MessageType, type ChatMessage, FunctionName } from '@/contexts/websocket-context';
+import { type ToolInvocation } from '@/types/chat-ui-state';
+
 import { cleanInitialMessages } from '../utils/message-cleanup';
 import { normalizeContent } from '../utils/message-formatters';
+
+import type { Message } from 'ai';
 
 interface UseChatMessagesParams {
   chatId: string | null;
@@ -887,11 +891,13 @@ export function useChatMessages({
       }
     );
 
-    // Handle errors
+    // Handle errors - ensure complete state cleanup
     const unsubscribeError = onEvent(MessageType.Error, (payload: unknown) => {
       const data = payload as { error: string };
       console.error("[Chat] WebSocket error:", data.error);
       setIsLoading(false);
+      // Reset streaming state to prevent orphaned messages
+      resetStreamingState();
     });
 
     return () => {

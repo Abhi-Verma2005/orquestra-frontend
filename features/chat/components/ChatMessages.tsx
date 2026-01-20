@@ -20,8 +20,9 @@
 
 'use client';
 
-import type { Message, Attachment } from 'ai';
 import { Message as PreviewMessage } from '@/components/chat/Message';
+
+import type { Message, Attachment } from 'ai';
 
 interface ChatMessagesProps {
   messages: Array<Message>;
@@ -51,7 +52,7 @@ export function ChatMessages({
   return (
     <div
       ref={messagesContainerRef}
-      className="flex flex-col gap-4 w-full h-full items-center overflow-y-auto px-4"
+      className="flex flex-col gap-4 size-full items-center overflow-y-auto px-4"
     >
       {messages.map((message, index) => {
         const isLast = index === messages.length - 1;

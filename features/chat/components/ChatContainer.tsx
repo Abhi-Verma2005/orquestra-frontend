@@ -12,8 +12,10 @@
 
 'use client';
 
-import { ChatUIStateProvider } from '@/contexts/chat-ui-state-context';
 import type { Message } from 'ai';
+
+import { ChatUIStateProvider } from '@/contexts/chat-ui-state-context';
+
 import { ChatContent } from './ChatContent';
 
 interface ChatContainerProps {
@@ -24,7 +26,7 @@ interface ChatContainerProps {
 
 export function ChatContainer({ id, initialMessages, user }: ChatContainerProps) {
   return (
-    <ChatUIStateProvider chatId={id} initialMessages={initialMessages}>
+    <ChatUIStateProvider chatId={id} initialMessages={initialMessages as any}>
       <ChatContent id={id} initialMessages={initialMessages} user={user} />
     </ChatUIStateProvider>
   );

@@ -2,6 +2,7 @@
 
 import { Star, Download } from "lucide-react";
 import Image from "next/image";
+
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 
@@ -43,7 +44,7 @@ export function MarketplaceCard({ item }: { item: Item }) {
                         {item.rating}
                     </div>
                 </div>
-                <h3 className="font-semibold leading-tight line-clamp-2 min-h-[2.5rem] group-hover:text-primary transition-colors">
+                <h3 className="font-semibold leading-tight line-clamp-2 min-h-10 group-hover:text-primary transition-colors">
                     {item.title}
                 </h3>
             </CardHeader>

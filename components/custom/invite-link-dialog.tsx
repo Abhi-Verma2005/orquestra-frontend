@@ -118,7 +118,7 @@ export function InviteLinkDialog({ chatId, onInviteCreated }: InviteLinkDialogPr
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-2">
-          <Users className="h-4 w-4" />
+          <Users className="size-4" />
           Invite
         </Button>
       </AlertDialogTrigger>
@@ -150,9 +150,9 @@ export function InviteLinkDialog({ chatId, onInviteCreated }: InviteLinkDialogPr
                   className="shrink-0"
                 >
                   {copied ? (
-                    <Check className="h-4 w-4 text-green-600" />
+                    <Check className="size-4 text-green-600" />
                   ) : (
-                    <Copy className="h-4 w-4" />
+                    <Copy className="size-4" />
                   )}
                 </Button>
               </div>
@@ -165,7 +165,7 @@ export function InviteLinkDialog({ chatId, onInviteCreated }: InviteLinkDialogPr
           {/* User search section */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
+              <Search className="size-4 text-muted-foreground" />
               <span className="text-xs font-medium text-muted-foreground">
                 Search users by email or ID
               </span>
@@ -235,9 +235,9 @@ export function InviteLinkDialog({ chatId, onInviteCreated }: InviteLinkDialogPr
                           title={alreadyAdded ? "Already in chat" : "Add to chat"}
                         >
                           {alreadyAdded ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            <CheckCircle2 className="size-4 text-green-600" />
                           ) : (
-                            <UserPlus className="h-4 w-4" />
+                            <UserPlus className="size-4" />
                           )}
                         </Button>
                       </div>

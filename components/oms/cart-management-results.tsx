@@ -76,18 +76,18 @@ interface CartManagementResultsProps {
   onDoneAddingToCart?: () => void
 }
 
-export default function CartManagementResults({ 
-  data, 
-  onAddToCart, 
-  onRemoveFromCart, 
-  onUpdateQuantity, 
+export default function CartManagementResults({
+  data,
+  onAddToCart,
+  onRemoveFromCart,
+  onUpdateQuantity,
   onClearCart,
   onProceedToPayment,
-  onDoneAddingToCart 
+  onDoneAddingToCart
 }: CartManagementResultsProps) {
   const { cartData, message } = data || {}
   const { state: contextCartState, removeItem: contextRemoveItem, updateQuantity: contextUpdateQuantity, clearCart: contextClearCart } = useCart()
-  
+
   // Always use context cart data for display and operations
   const displayCartData = {
     items: contextCartState.items || [],
@@ -123,7 +123,7 @@ export default function CartManagementResults({
     console.log('Quantity change requested:', { itemId, newQuantity })
     console.log('Current context cart state:', contextCartState.items)
     console.log('Available context functions:', { contextRemoveItem, contextUpdateQuantity })
-    
+
     if (newQuantity < 1) {
       console.log('Removing item due to quantity < 1')
       contextRemoveItem(itemId)
@@ -132,12 +132,12 @@ export default function CartManagementResults({
       contextUpdateQuantity(itemId, newQuantity)
     }
   }
-  
+
   const handleRemoveItem = (itemId: string) => {
     console.log('Remove item requested:', itemId)
     contextRemoveItem(itemId)
   }
-  
+
   const handleClearCart = () => {
     console.log('Clear cart requested')
     contextClearCart()
@@ -150,7 +150,7 @@ export default function CartManagementResults({
         <h3 className="text-lg sm:text-xl font-semibold text-[#E0E0E0]">
           Cart ({displayCartData.totalItems})
         </h3>
-        
+
         <div className="flex items-center gap-2">
           {displayCartData.items.length > 0 && (
             <Button
@@ -211,7 +211,7 @@ export default function CartManagementResults({
                 </div>
 
                 {/* Controls */}
-                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 flex-shrink-0">
+                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-3 shrink-0">
                   {/* Quantity Controls */}
                   <div className="flex items-center gap-1">
                     <Button
@@ -225,11 +225,11 @@ export default function CartManagementResults({
                     >
                       <Minus className="size-3" />
                     </Button>
-                    
+
                     <span className="text-sm font-medium w-6 sm:w-8 text-center text-[#E0E0E0]">
                       {item.quantity}
                     </span>
-                    
+
                     <Button
                       variant="outline"
                       size="icon"
@@ -278,14 +278,14 @@ export default function CartManagementResults({
                 {formatPrice(displayCartData.totalPrice)}
               </span>
             </div>
-            
+
             <div className="flex items-center justify-between text-sm sm:text-base">
               <span className="text-sm font-medium text-[#A0A0A0]">Tax (8%)</span>
               <span className="text-sm sm:text-base text-[#E0E0E0] font-medium">
                 {formatPrice(displayCartData.totalPrice * 0.08)}
               </span>
             </div>
-            
+
             <div className="border-t border-[#333333] pt-3">
               <div className="flex items-center justify-between">
                 <span className="text-base sm:text-lg font-semibold text-[#E0E0E0]">Total</span>
@@ -296,7 +296,7 @@ export default function CartManagementResults({
             </div>
 
             <Button
-              onClick={onDoneAddingToCart || (() => {})}
+              onClick={onDoneAddingToCart || (() => { })}
               className="w-full bg-[#569CD6] hover:bg-[#00C0C0] text-white py-2.5 sm:py-3 px-4 rounded-md text-sm sm:text-base font-medium transition-colors flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
               size="lg"
             >

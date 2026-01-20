@@ -1,5 +1,4 @@
 import { Metadata } from "next";
-import { Toaster } from "sonner";
 
 // SSR-safe polyfills (must be imported before any browser-only libs run)
 import "./polyfills/indexeddb";
@@ -47,7 +46,6 @@ export default async function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <Providers>
-          <Toaster position="top-center" />
           {children}
         </Providers>
       </body>

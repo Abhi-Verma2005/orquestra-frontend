@@ -29,8 +29,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { Message } from 'ai';
+
 import { NEW_CHAT_DRAFT_KEY } from '../utils/draft-storage';
+
+import type { Message } from 'ai';
 
 interface UseChatJoinParams {
   chatId: string | null;
@@ -46,6 +48,7 @@ interface UseChatJoinParams {
   setIsOwner: (isOwner: boolean) => void;
   userInfo?: { name?: string; email?: string };
   stopRequestedRef: React.MutableRefObject<boolean>;
+  setSelectedAgent?: (agent: { id: string; name: string; description?: string } | null) => void;
 }
 
 export function useChatJoin({
@@ -62,6 +65,7 @@ export function useChatJoin({
   setIsOwner,
   userInfo,
   stopRequestedRef,
+  setSelectedAgent,
 }: UseChatJoinParams) {
   const lastJoinedChatIdRef = useRef<string | null>(null);
 
@@ -148,9 +152,14 @@ export function useChatJoin({
       let pending: Message;
 
       if (parsed.message) {
-        // New format: { message: Message, cartData?: any }
+        // New format: { message: Message, cartData?: any, selectedAgent?: any }
         pending = parsed.message;
         setMessages((prev) => [...prev, parsed.message])
+
+        // Restore selected agent if present
+        if (parsed.selectedAgent && setSelectedAgent) {
+          setSelectedAgent(parsed.selectedAgent);
+        }
       } else {
         // Old format: just Message
         pending = parsed as Message;
@@ -161,6 +170,7 @@ export function useChatJoin({
         const messagePayload: any = {
           chat_id: chatId,
           user_id: user?.id,
+          agent_id: parsed.agent_id, // Pass the tagged agent ID if present
           message: {
             room_id: chatId,
             payload: {
@@ -182,6 +192,6 @@ export function useChatJoin({
       sessionStorage.removeItem(key);
       // Clear any leftover new-chat draft
       localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
-    } catch {}
+    } catch { }
   }, [chatId, wsState, sendMessage, scrollToMessage, user, setMessages, setIsLoading, stopRequestedRef]);
 }

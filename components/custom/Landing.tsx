@@ -25,7 +25,8 @@ export function Chat({
   const [isLoading, setIsLoading] = useState(false);
   const saveDraftTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
-  
+  const [selectedAgent, setSelectedAgent] = useState<{ id: string; name: string; description?: string } | null>(null);
+
   // Restore draft from localStorage on mount
   useEffect(() => {
     if (typeof window !== "undefined" && messages.length === 0) {
@@ -91,14 +92,14 @@ export function Chat({
       if (messages.length === 0) {
         try {
           setIsCreatingChat(true);
-          
+
           // Create new chat
           const res = await fetch("/api/chat/create", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: userMsg }),
           });
-          
+
           if (!res.ok) {
             console.error(
               "[Chat] Failed to create chat:",
@@ -108,10 +109,10 @@ export function Chat({
             setIsCreatingChat(false);
             return;
           }
-          
+
           const data = await res.json();
           const newId = data?.id as string;
-          
+
           if (!newId) {
             setIsCreatingChat(false);
             return;
@@ -127,10 +128,10 @@ export function Chat({
               JSON.stringify(pendingData)
             );
             localStorage.removeItem(NEW_CHAT_DRAFT_KEY);
-          } catch {}
+          } catch { }
 
           setIsLoading(true);
-          
+
           // Navigate to new chat
           console.log("Navigating to new chat:", newId);
           router.push(`/chat/${newId}`);
@@ -176,7 +177,7 @@ export function Chat({
 
   return (
     <div className="h-dvh bg-background relative">
-      <div className="h-full w-full">
+      <div className="size-full">
         <div className="flex flex-col relative h-full">
           <div
             className="flex flex-col pb-2 md:pb-4 transition-all duration-300 h-full justify-center items-center"
@@ -194,6 +195,8 @@ export function Chat({
                 setAttachments={setAttachments}
                 messages={messages}
                 append={append}
+                selectedAgent={selectedAgent}
+                setSelectedAgent={setSelectedAgent}
               />
             </form>
           </div>

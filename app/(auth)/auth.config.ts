@@ -11,32 +11,26 @@ export const authConfig = {
   ],
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
-      let isLoggedIn = !!auth?.user;
-      let isOnChat = nextUrl.pathname.startsWith("/");
-      let isOnRegister = nextUrl.pathname.startsWith("/register");
-      let isOnLogin = nextUrl.pathname.startsWith("/login");
-      let isChatId = nextUrl.pathname.startsWith("/chat/");
+      const isLoggedIn = !!auth?.user;
+      const isChat = nextUrl.pathname.startsWith("/chat");
+      const isAuthPage = nextUrl.pathname.startsWith("/login") || nextUrl.pathname.startsWith("/register");
+      const isRoot = nextUrl.pathname === "/";
 
-      console.log(`[AUTH] Path: ${nextUrl.pathname}, LoggedIn: ${isLoggedIn}, isChatId: ${isChatId}`);
+      console.log(`[AUTH] Path: ${nextUrl.pathname}, LoggedIn: ${isLoggedIn}`);
 
-      if (isLoggedIn && (isOnLogin || isOnRegister)) {
-        return Response.redirect(new URL("/", nextUrl));
+      if (isAuthPage) {
+        if (isLoggedIn) {
+          return Response.redirect(new URL("/", nextUrl));
+        }
+        return true;
       }
 
-      if (isOnRegister || isOnLogin) {
-        return true; // Always allow access to register and login pages
-      }
-
-      if (isChatId || isOnChat) {
+      if (isChat) {
         if (isLoggedIn) return true;
-        console.log(`[AUTH] Redirecting unauthenticated user from ${nextUrl.pathname} to /login`);
-        return false; // Redirect unauthenticated users to login page
+        return false; // Redirect to login
       }
 
-      if (isLoggedIn) {
-        return Response.redirect(new URL("/", nextUrl));
-      }
-
+      // Allow access to landing page (root) and other public pages by default
       return true;
     },
   },

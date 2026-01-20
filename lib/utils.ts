@@ -6,6 +6,7 @@ import {
   ToolInvocation,
 } from "ai";
 import { clsx, type ClassValue } from "clsx";
+import { getSession } from "next-auth/react";
 import { twMerge } from "tailwind-merge";
 
 import { Chat } from "../db/schema";
@@ -19,15 +20,41 @@ interface ApplicationError extends Error {
   status: number;
 }
 
+export function getBackendUrl() {
+  let backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+  if (backendUrl.includes("0.0.0.0")) {
+    backendUrl = backendUrl.replace("0.0.0.0", "localhost");
+  }
+  return backendUrl;
+}
+
 export const fetcher = async (url: string) => {
-  const res = await fetch(url);
+  const backendUrl = getBackendUrl();
+  const finalUrl = url.startsWith("/api/") ? `${backendUrl}${url}` : url;
+
+  const session = await getSession();
+  const token = (session as any)?.accessToken;
+
+  if (!token && url.startsWith("/api/") && !url.includes("auth")) {
+    console.warn("[Fetcher] No access token found for API call to:", url);
+  }
+
+  const res = await fetch(finalUrl, {
+    headers: {
+      Authorization: token ? `Bearer ${token}` : "",
+    },
+  });
 
   if (!res.ok) {
     const error = new Error(
       "An error occurred while fetching the data.",
     ) as ApplicationError;
 
-    error.info = await res.json();
+    try {
+      error.info = await res.json();
+    } catch {
+      error.info = await res.text();
+    }
     error.status = res.status;
 
     throw error;
@@ -238,7 +265,7 @@ export const formatThousands = (value: number): string => Intl.NumberFormat('en-
 export const getCssVariable = (variable: string): string => {
   if (typeof window === 'undefined') {
     return '';
-  }  
+  }
   return getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
 };
 
@@ -273,7 +300,7 @@ export const adjustColorOpacity = (color: string, opacity: number): string => {
   } else if (color.startsWith('oklch')) {
     return adjustOKLCHOpacity(color, opacity);
   } else {
-    return "";    
+    return "";
   }
 };
 
@@ -282,10 +309,10 @@ export const oklchToRGBA = (oklchColor: string): string => {
   const tempDiv = document.createElement('div');
   tempDiv.style.color = oklchColor;
   document.body.appendChild(tempDiv);
-  
+
   // Get the computed style and convert to RGB
   const computedColor = window.getComputedStyle(tempDiv).color;
   document.body.removeChild(tempDiv);
-  
+
   return computedColor;
 };

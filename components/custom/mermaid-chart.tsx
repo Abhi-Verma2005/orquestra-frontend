@@ -98,7 +98,7 @@ export const MermaidChart = ({ code }: MermaidChartProps) => {
       <div className="my-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
         <div className="flex items-center gap-2 text-destructive">
           <svg
-            className="w-4 h-4"
+            className="size-4"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -130,7 +130,7 @@ export const MermaidChart = ({ code }: MermaidChartProps) => {
       {isLoading && (
         <div className="flex items-center justify-center p-8 bg-muted/50 rounded-lg">
           <div className="flex items-center gap-2 text-muted-foreground">
-            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <div className="size-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
             <span className="text-sm">Rendering diagram...</span>
           </div>
         </div>

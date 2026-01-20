@@ -1,7 +1,8 @@
-import { config } from "dotenv";
-import postgres from "postgres";
 import fs from "fs";
 import path from "path";
+
+import { config } from "dotenv";
+import postgres from "postgres";
 
 config({
   path: ".env.local",

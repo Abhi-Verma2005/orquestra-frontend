@@ -156,10 +156,10 @@ export default function PieChart({
 
   return (
     <div className="grow flex flex-col">
-      <div className="flex-shrink-0" style={{ height: `${height * 0.7}px` }}>
+      <div className="shrink-0" style={{ height: `${height * 0.7}px` }}>
         <canvas ref={canvas} width={width} height={height}></canvas>
       </div>
-      <div className="flex-1 px-2 pt-2 pb-2 flex items-center justify-center">
+      <div className="flex-1 p-2 flex items-center justify-center">
         <ul ref={legend} className="flex flex-wrap justify-center gap-1.5 text-xs" />
       </div>
     </div>

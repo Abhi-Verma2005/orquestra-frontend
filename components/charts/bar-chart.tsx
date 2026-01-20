@@ -209,8 +209,8 @@ export default function BarChart({
 
   return (
     <div className="grow flex flex-col">
-      <div className="flex-shrink-0 px-0.5 py-0.5">
-        <ul ref={legend} className="flex flex-wrap gap-x-0 gap-y-0 text-xs"></ul>
+      <div className="shrink-0 p-0.5">
+        <ul ref={legend} className="flex flex-wrap gap-0 text-xs"></ul>
       </div>
       <div className="flex-1" style={{ height: `${height * 0.8}px` }}>
         <canvas ref={canvas} width={width} height={height}></canvas>

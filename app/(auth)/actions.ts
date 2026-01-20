@@ -50,20 +50,35 @@ export const register = async (
       password: formData.get("password"),
     });
 
-    let [user] = await getUser(validatedData.email);
-
-    if (user) {
-      return { status: "user_exists" } as RegisterActionState;
-    } else {
-      await createUser(validatedData.email, validatedData.password);
-      await signIn("credentials", {
+    const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
+    const response = await fetch(`${backendUrl}/api/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         email: validatedData.email,
         password: validatedData.password,
-        redirect: false,
-      });
+      }),
+    });
 
-      return { status: "success" };
+    if (response.status === 400) {
+      const errorData = await response.json();
+      if (errorData.error === "Email already in use") {
+        return { status: "user_exists" };
+      }
+      return { status: "invalid_data" };
     }
+
+    if (!response.ok) {
+      return { status: "failed" };
+    }
+
+    await signIn("credentials", {
+      email: validatedData.email,
+      password: validatedData.password,
+      redirect: false,
+    });
+
+    return { status: "success" };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { status: "invalid_data" };

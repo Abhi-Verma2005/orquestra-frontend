@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { AuthForm } from "@/components/custom/auth-form";
 import { SubmitButton } from "@/components/custom/submit-button";
+import Logo from "@/components/custom/logo";
 
 import { login } from "../actions";
 
@@ -26,7 +27,7 @@ export default function Page() {
 
   useEffect(() => {
     if (!state || !state.status) return;
-    
+
     if (state.status === "failed") {
       toast.error("Invalid credentials!");
     } else if (state.status === "invalid_data") {
@@ -42,27 +43,44 @@ export default function Page() {
   };
 
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl flex flex-col gap-12">
-        <div className="flex flex-col items-center justify-center gap-2 px-4 text-center sm:px-16">
-          <h3 className="text-xl font-semibold dark:text-zinc-50">Sign In</h3>
-          <p className="text-sm text-gray-500 dark:text-zinc-400">
-            Use your email and password to sign in
-          </p>
-        </div>
-        <AuthForm action={handleSubmit} defaultEmail={email}>
-          <SubmitButton>Sign in</SubmitButton>
-          <p className="text-center text-sm text-gray-600 mt-4 dark:text-zinc-400">
-            {"Don't have an account? "}
+    <div className="flex min-h-screen w-screen items-center justify-center bg-[#0A0A0B] px-4">
+      {/* Background Effect */}
+      <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
+        <div className="h-[600px] w-[600px] rounded-full bg-blue-500/10 blur-[120px] opacity-40" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-md">
+        {/* Card Container */}
+        <div className="rounded-2xl border border-border/30 bg-[#0C0C0D] p-8 shadow-2xl">
+          {/* Header */}
+          <div className="flex flex-col items-center gap-4 mb-8">
+            <Logo href="/" size={40} />
+            <div className="text-center">
+              <h1 className="text-[24px] font-normal text-foreground">Welcome back</h1>
+              <p className="text-[14px] text-muted-foreground/70 mt-1">
+                Sign in to your account to continue
+              </p>
+            </div>
+          </div>
+
+          {/* Form */}
+          <AuthForm action={handleSubmit} defaultEmail={email}>
+            <SubmitButton className="w-full h-11 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors mt-2">
+              Sign In
+            </SubmitButton>
+          </AuthForm>
+
+          {/* Footer */}
+          <p className="text-center text-[13px] text-muted-foreground/60 mt-6">
+            Don't have an account?{" "}
             <Link
               href="/register"
-              className="font-semibold text-gray-800 hover:underline dark:text-zinc-200"
+              className="text-blue-500 hover:text-blue-400 transition-colors"
             >
               Sign up
             </Link>
-            {" for free."}
           </p>
-        </AuthForm>
+        </div>
       </div>
     </div>
   );

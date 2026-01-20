@@ -7,7 +7,8 @@
 
 'use client';
 
-import React, { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
+
 import { useWebSocketEvents } from '@/hooks/use-websocket-events';
 import type { ChatUIState, ToolInvocation } from '@/types/chat-ui-state';
 
@@ -72,7 +73,7 @@ export function ChatUIStateProvider({
     if (initialMessages.length > 0) {
       const dbToolInvocations = initialMessages
         .flatMap(msg => msg.toolInvocations || [])
-        .filter(inv => inv.state === 'result' || inv.state === 'call');
+        .filter(inv => inv.state === 'complete' || (inv.state as any) === 'result' || (inv.state as any) === 'call');
       
       // If DB has tool invocations, they are the source of truth
       // Realtime state should only show "loading" tools that haven't been saved yet

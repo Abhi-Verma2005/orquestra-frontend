@@ -1,6 +1,8 @@
 "use client";
 
 import { SessionProvider } from "next-auth/react";
+import { useTheme } from "next-themes";
+import { Toaster } from "sonner";
 
 import { CartProvider } from "../contexts/cart-context";
 import { SplitScreenProvider } from "../contexts/SplitScreenProvider";
@@ -17,6 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         enableSystem={false}
         disableTransitionOnChange={false}
       >
+        <ThemeAwareToaster />
         <WebSocketProvider>
           <SplitScreenProvider>
             <UserInfoProvider>
@@ -28,5 +31,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
         </WebSocketProvider>
       </ThemeProvider>
     </SessionProvider>
+  );
+}
+
+function ThemeAwareToaster() {
+  const { theme } = useTheme();
+  return (
+    <Toaster
+      position="bottom-right"
+      theme={theme as "light" | "dark" | "system"}
+      richColors
+    />
   );
 }

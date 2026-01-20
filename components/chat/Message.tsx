@@ -7,17 +7,18 @@ import { ReactNode, useEffect, useRef, useCallback, useMemo, useState } from "re
 
 import { BotIcon, UserIcon } from "@/components/custom/icons";
 import Logo from "@/components/custom/logo";
-import { Markdown } from "./Markdown";
 import { PreviewAttachment } from "@/components/custom/preview-attachment";
 import { Weather } from "@/components/custom/weather";
-import { useCart } from "@/contexts/cart-context";
-import { useSplitScreen } from "@/contexts/SplitScreenProvider";
-import { useChatUIState } from "@/contexts/chat-ui-state-context";
 import TextShimmer from "@/components/forgeui/text-shimmer";
 import CartManagementResults from "@/components/oms/cart-management-results";
 import { PublishersResults } from "@/components/publishers/publishers-results";
-import { ToolInvocationItem } from "@/components/tools/use-tool-invocation";
 import { ToolSummaryCard } from "@/components/tools";
+import { ToolInvocationItem } from "@/components/tools/use-tool-invocation";
+import { useCart } from "@/contexts/cart-context";
+import { useChatUIState } from "@/contexts/chat-ui-state-context";
+import { useSplitScreen } from "@/contexts/SplitScreenProvider";
+
+import { Markdown } from "./Markdown";
 import { ToolInvocationCard } from "./ToolInvocationCard";
 
 // Helper function to get dynamic loading text based on active tools
@@ -193,7 +194,7 @@ export const Message = ({
 
   const handleDoneAddingToCart = useCallback(() => {
     if (cartState.items.length === 0) return;
-    
+
     // Show cart summary
     const cartSummary = (
       <div className="p-4 space-y-4">
@@ -204,7 +205,7 @@ export const Message = ({
         </div>
       </div>
     );
-    
+
     setRightPanelContent(cartSummary);
   }, [cartState.items, setRightPanelContent, clearCart, closeRightPanel]);
 
@@ -218,7 +219,7 @@ export const Message = ({
         break;
       case "browsePublishers":
         component = (
-          <PublishersResults 
+          <PublishersResults
             results={result}
             onAddToCart={(publisher) => {
               addItem({
@@ -262,8 +263,8 @@ export const Message = ({
       case "clearCart":
       case "updateCartItemQuantity":
         component = (
-          <CartManagementResults 
-            data={result} 
+          <CartManagementResults
+            data={result}
             onDoneAddingToCart={handleDoneAddingToCart}
           />
         );
@@ -306,14 +307,14 @@ export const Message = ({
       // When the tool returns a result, open the sidebar and show the content
       if (state === "result" && !processedToolCalls.current.has(toolCallId)) {
         const { result } = toolInvocation as any;
-        
+
         // Handle collectPublisherFilters inline (embedded), don't open sidebar
         if (toolName === "collectPublisherFilters") {
           // Don't open sidebar for filter collection - handled in result state
         } else {
           showInRightPanel(toolName, result, `result-${toolCallId}`);
         }
-        
+
         processedToolCalls.current.add(toolCallId);
         openedToolCalls.current.delete(toolCallId);
       }
@@ -326,9 +327,8 @@ export const Message = ({
       initial={{ y: 5, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
     >
-      <div className={`size-[24px] border border-border rounded-sm p-1 flex flex-col justify-center items-center shrink-0 text-muted-foreground relative ${
-        role === "assistant" && actualIsGenerating ? 'animate-[stream-pulse_2s_ease-in-out_infinite]' : ''
-      }`}>
+      <div className={`size-[24px] border border-border rounded-sm p-1 flex flex-col justify-center items-center shrink-0 text-muted-foreground relative ${role === "assistant" && actualIsGenerating ? 'animate-[stream-pulse_2s_ease-in-out_infinite]' : ''
+        }`}>
         {role === "assistant" ? (
           <Logo href="#" size={16} />
         ) : (
@@ -353,19 +353,19 @@ export const Message = ({
           if (!label) return null;
 
           return (
-          <div className="text-xs text-muted-foreground font-medium mb-1">
-            {label}
-          </div>
+            <div className="text-xs text-muted-foreground font-medium mb-1">
+              {label}
+            </div>
           );
         })()}
-        
+
         {/* Show system message styling */}
         {role === "system" && (
           <div className="text-xs text-muted-foreground italic mb-1">
             {typeof content === "string" ? content : "System message"}
           </div>
         )}
-        
+
         {/* Show dynamic shimmer when generating but no content yet */}
         {role === "assistant" && actualIsGenerating && (!content || (typeof content === "string" && content.trim() === "")) && (
           <div className="w-full max-w-sm mb-4">
@@ -414,13 +414,13 @@ export const Message = ({
                     // Convert old format to new ToolInvocation format
                     // If there's a result OR state is "result", show as complete
                     // This handles cases where state wasn't properly updated but result exists
-                    const isComplete = toolInvocation.state === "result" || toolInvocation.result != null;
+                    const isComplete = toolInvocation.state === "result" || (toolInvocation as any).result != null;
                     const cardInvocation = {
                       id: toolInvocation.toolCallId,
                       name: toolName,
                       state: (isComplete ? "complete" : "loading") as "loading" | "complete",
                       args: toolInvocation.args,
-                      result: toolInvocation.result,
+                      result: (toolInvocation as any).result,
                       timestamp: Date.now(),
                     };
 
@@ -466,22 +466,20 @@ export const Message = ({
 
           return null;
         })()}
-        
+
         {/* Show content when it exists (skip for system messages, they're shown above) */}
         {content && typeof content === "string" && content.trim() !== "" && role !== "system" && (
-          <div className={`text-foreground flex flex-col gap-4 relative ${
-            content.trim().startsWith("Error:") ? "error-message" : ""
-          }`}>
-            <div className={`${actualIsGenerating ? 'streaming-content' : ''} ${
-              content.trim().startsWith("Error:")
+          <div className={`text-foreground flex flex-col gap-4 relative ${content.trim().startsWith("Error:") ? "error-message" : ""
+            }`}>
+            <div className={`${actualIsGenerating ? 'streaming-content' : ''} ${content.trim().startsWith("Error:")
                 ? "bg-red-500/10 dark:bg-red-500/20 border border-red-500/30 dark:border-red-500/40 rounded-lg p-3"
                 : ""
-            }`}>
+              }`}>
               <div className={content.trim().startsWith("Error:") ? "text-red-600 dark:text-red-400" : ""}>
                 <Markdown>{content}</Markdown>
               </div>
             </div>
-            
+
             {/* Typing cursor - only show during streaming */}
             {actualIsGenerating && (
               <span
@@ -502,32 +500,28 @@ export const Message = ({
 
         {/* Response Action Buttons - Only show for assistant messages when response is complete */}
         {role === "assistant" && content && typeof content === "string" && !actualIsGenerating && (
-          <div className={`flex items-center gap-1 mt-2 text-muted-foreground transition-opacity duration-200 ${
-            isLastMessage ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-          }`}>
+          <div className={`flex items-center gap-1 mt-2 text-muted-foreground transition-opacity duration-200 ${isLastMessage ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}>
             <button
               onClick={handleThumbsUp}
-              className={`p-1 rounded hover:bg-muted transition-colors ${
-                feedback === 'up' ? 'text-green-500' : ''
-              }`}
+              className={`p-1 rounded hover:bg-muted transition-colors ${feedback === 'up' ? 'text-green-500' : ''
+                }`}
               title="Thumbs up"
             >
               <ThumbsUp size={14} />
             </button>
             <button
               onClick={handleThumbsDown}
-              className={`p-1 rounded hover:bg-muted transition-colors ${
-                feedback === 'down' ? 'text-red-500' : ''
-              }`}
+              className={`p-1 rounded hover:bg-muted transition-colors ${feedback === 'down' ? 'text-red-500' : ''
+                }`}
               title="Thumbs down"
             >
               <ThumbsDown size={14} />
             </button>
             <button
               onClick={handleCopy}
-              className={`p-1 rounded hover:bg-muted transition-colors ${
-                copied ? 'text-green-500' : ''
-              }`}
+              className={`p-1 rounded hover:bg-muted transition-colors ${copied ? 'text-green-500' : ''
+                }`}
               title={copied ? "Copied!" : "Copy"}
             >
               <Copy size={14} />

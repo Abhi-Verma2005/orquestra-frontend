@@ -11,8 +11,23 @@ const config: Config = {
     fontFamily: {
       sans: ["geist"],
       mono: ["geist-mono"],
+      serif: ["Inter", "serif"],
     },
     extend: {
+      animation: {
+        "glow-pulse": "glow-pulse 2s ease-in-out infinite",
+        "subtle-float": "subtle-float 6s ease-in-out infinite",
+      },
+      keyframes: {
+        "glow-pulse": {
+          "0%, 100%": { opacity: "0.4" },
+          "50%": { opacity: "0.7" },
+        },
+        "subtle-float": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

@@ -4,18 +4,14 @@ import cx from "classnames";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { User } from "next-auth";
+import { useSession } from "next-auth/react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
+import { Search, MoreHorizontal, Trash2, MessageSquare, Users, Hash } from "lucide-react";
 
-import {
-  InfoIcon,
-  MoreHorizontalIcon,
-  PencilEditIcon,
-  TrashIcon,
-} from "./icons";
 import { Chat } from "../../db/schema";
-import { fetcher, getTitleFromChat } from "../../lib/utils";
+import { fetcher, getTitleFromChat, getBackendUrl } from "../../lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,14 +28,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "../ui/dropdown-menu";
-import { Input } from "../ui/input";
 
-// Sort options
 type SortOption = "newest" | "oldest" | "title-asc" | "title-desc" | "recent-activity";
-
-// Filter options
 type FilterOption = "all" | "group" | "individual";
 
 export const History = ({
@@ -65,28 +56,24 @@ export const History = ({
     dedupingInterval: 60000,
   });
 
-  // Search, Sort, and Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState<SortOption>("newest");
   const [filterOption, setFilterOption] = useState<FilterOption>("all");
-  const [showFilters, setShowFilters] = useState(false);
 
+  const { data: session } = useSession();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  // Filter and sort chats
   const filteredAndSortedChats = useMemo(() => {
     if (!history) return [];
 
     let filtered = [...history];
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter((chat) => {
         const title = getTitleFromChat(chat).toLowerCase();
         const summary = (chat.summary || "").toLowerCase();
-        // Search in messages content
         const messages = (chat.messages || []) as Array<any>;
         const messageContent = messages
           .map((msg) => (typeof msg.content === "string" ? msg.content : ""))
@@ -101,7 +88,6 @@ export const History = ({
       });
     }
 
-    // Apply type filter
     if (filterOption !== "all") {
       filtered = filtered.filter((chat) => {
         if (filterOption === "group") {
@@ -112,7 +98,6 @@ export const History = ({
       });
     }
 
-    // Apply sorting
     filtered.sort((a, b) => {
       switch (sortOption) {
         case "newest":
@@ -134,8 +119,12 @@ export const History = ({
   }, [history, searchQuery, sortOption, filterOption]);
 
   const handleDelete = async () => {
-    const deletePromise = fetch(`/api/chat/delete?id=${deleteId}`, {
+    const backendUrl = getBackendUrl();
+    const deletePromise = fetch(`${backendUrl}/api/chat/delete?id=${deleteId}`, {
       method: "DELETE",
+      headers: {
+        Authorization: (session as any)?.accessToken ? `Bearer ${(session as any).accessToken}` : "",
+      },
     });
 
     toast.promise(deletePromise, {
@@ -156,10 +145,8 @@ export const History = ({
 
   if (isCollapsed) {
     return (
-      <div className="flex flex-col items-center space-y-2">
-        <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-          {history?.length || 0} chats
-        </div>
+      <div className="flex flex-col items-center justify-center py-4">
+        <span className="text-[11px] text-muted-foreground/50">{history?.length || 0}</span>
       </div>
     );
   }
@@ -167,216 +154,141 @@ export const History = ({
   return (
     <>
       <div className="space-y-2">
-        {user && (
-          <Button
-            className="w-full font-normal text-sm flex flex-row justify-between text-white"
-            asChild
-          >
-            <Link href="/chat" onClick={onItemClick}>
-              <div>Start a new chat</div>
-              <PencilEditIcon size={14} />
-            </Link>
-          </Button>
-        )}
-
-        {/* Search and Filter Bar */}
+        {/* Search */}
         {user && (
           <div className="space-y-2">
-            {/* Search Input */}
             <div className="relative">
-              <Input
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/40" />
+              <input
                 type="text"
                 placeholder="Search chats..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-sm pr-8"
+                className="w-full rounded-lg border border-white/[0.06] bg-white/[0.02] pl-9 pr-8 py-2 text-[12px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-white/[0.12] focus:bg-white/[0.04] transition-all"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/40 hover:text-foreground text-sm transition-colors"
                 >
                   ×
                 </button>
               )}
             </div>
 
-            {/* Filter and Sort Controls */}
-            <div className="flex gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 text-xs"
-                  >
-                    Filter: {filterOption === "all" ? "All" : filterOption === "group" ? "Groups" : "Individual"}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => setFilterOption("all")}>
-                    All Chats
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterOption("group")}>
-                    Group Chats
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setFilterOption("individual")}>
-                    Individual Chats
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 text-xs"
-                  >
-                    Sort: {
-                      sortOption === "newest" ? "Newest" :
-                        sortOption === "oldest" ? "Oldest" :
-                          sortOption === "recent-activity" ? "Recent" :
-                            sortOption === "title-asc" ? "A-Z" : "Z-A"
-                    }
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => setSortOption("newest")}>
-                    Newest First
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortOption("oldest")}>
-                    Oldest First
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortOption("recent-activity")}>
-                    Recent Activity
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setSortOption("title-asc")}>
-                    Title (A-Z)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortOption("title-desc")}>
-                    Title (Z-A)
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-
             {/* Results count */}
-            {(searchQuery || filterOption !== "all" || sortOption !== "newest") && (
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                Showing {filteredAndSortedChats.length} of {history?.length || 0} chats
+            {(searchQuery || filterOption !== "all") && (
+              <div className="text-[10px] text-muted-foreground/40 px-1">
+                {filteredAndSortedChats.length} of {history?.length || 0} chats
               </div>
             )}
           </div>
         )}
 
-        <div className="flex flex-col overflow-y-auto space-y-1 max-h-64">
-          {!user ? (
-            <div className="text-zinc-500 w-full flex flex-row justify-center items-center text-xs gap-2 py-4">
-              <InfoIcon />
-              <div>Login to save chats!</div>
-            </div>
-          ) : null}
-
-          {!isLoading && filteredAndSortedChats.length === 0 && user ? (
-            <div className="text-zinc-500 w-full flex flex-row justify-center items-center text-xs gap-2 py-4">
-              <InfoIcon />
-              <div>
-                {searchQuery || filterOption !== "all"
-                  ? "No chats match your filters"
-                  : "No chats found"}
+        {/* Chat List */}
+        <div className="flex flex-col">
+          {!user && (
+            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+              <div className="size-10 rounded-full bg-white/[0.04] flex items-center justify-center">
+                <MessageSquare className="size-5 text-muted-foreground/40" />
               </div>
+              <span className="text-[12px] text-muted-foreground/50">Sign in to save chats</span>
             </div>
-          ) : null}
+          )}
 
-          {isLoading && user ? (
-            <div className="flex flex-col space-y-2">
-              {[44, 32, 28, 52].map((item) => (
-                <div key={item} className="p-2">
-                  <div
-                    className={`w-${item} h-[16px] rounded-md bg-zinc-200 dark:bg-zinc-600 animate-pulse`}
-                  />
-                </div>
+          {!isLoading && filteredAndSortedChats.length === 0 && user && (
+            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+              <div className="size-10 rounded-full bg-white/[0.04] flex items-center justify-center">
+                <MessageSquare className="size-5 text-muted-foreground/40" />
+              </div>
+              <span className="text-[12px] text-muted-foreground/50">
+                {searchQuery ? "No matches found" : "No chats yet"}
+              </span>
+            </div>
+          )}
+
+          {isLoading && user && (
+            <div className="flex flex-col gap-1 py-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-9 rounded-lg bg-white/[0.02] animate-pulse" />
               ))}
             </div>
-          ) : null}
+          )}
 
-          {filteredAndSortedChats &&
-            filteredAndSortedChats.map((chat) => (
-              <div
-                key={chat.id}
-                className={cx(
-                  "flex flex-row items-center gap-2 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md pr-2",
-                  { "bg-zinc-200 dark:bg-zinc-700": chat.id === id },
-                )}
+          {filteredAndSortedChats.map((chat) => (
+            <div
+              key={chat.id}
+              className={cx(
+                "group flex items-center gap-2 rounded-lg px-2.5 py-2 transition-all",
+                chat.id === id
+                  ? "bg-white/[0.08]"
+                  : "hover:bg-white/[0.04]"
+              )}
+            >
+              <Link
+                href={`/chat/${chat.id}`}
+                className="flex-1 min-w-0 flex items-center gap-2"
+                onClick={onItemClick}
               >
-                <Button
-                  variant="ghost"
-                  className={cx(
-                    "hover:bg-zinc-200 dark:hover:bg-zinc-700 justify-between p-0 text-xs font-normal flex flex-row items-center gap-2 pr-2 w-full transition-none",
+                <div className={cx(
+                  "size-6 rounded-md flex items-center justify-center shrink-0",
+                  chat.isGroupChat ? "bg-blue-500/10" : "bg-white/[0.04]"
+                )}>
+                  {chat.isGroupChat ? (
+                    <Users className="size-3 text-blue-400" />
+                  ) : (
+                    <Hash className="size-3 text-muted-foreground/50" />
                   )}
-                  asChild
-                >
-                  <Link
-                    href={`/chat/${chat.id}`}
-                    className="text-ellipsis overflow-hidden text-left py-1 pl-2 rounded-lg outline-zinc-900"
-                    onClick={onItemClick}
-                  >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      {chat.isGroupChat && (
-                        <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded flex-shrink-0">
-                          Group
-                        </span>
-                      )}
-                      <span className="truncate">{getTitleFromChat(chat)}</span>
-                    </div>
-                  </Link>
-                </Button>
+                </div>
+                <span className="text-[13px] text-foreground/80 truncate group-hover:text-foreground transition-colors">
+                  {getTitleFromChat(chat)}
+                </span>
+              </Link>
 
-                <DropdownMenu modal={true}>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      className="p-0 h-fit font-normal text-zinc-500 transition-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                      variant="ghost"
-                    >
-                      <MoreHorizontalIcon />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="left" className="z-[60]">
-                    <DropdownMenuItem asChild>
-                      <Button
-                        className="flex flex-row gap-2 items-center justify-start w-full h-fit font-normal p-1.5 rounded-sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setDeleteId(chat.id);
-                          setShowDeleteDialog(true);
-                        }}
-                      >
-                        <TrashIcon />
-                        <div>Delete</div>
-                      </Button>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            ))}
+              <DropdownMenu modal={true}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    className="size-6 p-0 opacity-0 group-hover:opacity-100 transition-all text-muted-foreground/50 hover:text-foreground hover:bg-white/[0.08] rounded-md"
+                    variant="ghost"
+                  >
+                    <MoreHorizontal className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start" className="bg-[#0C0C0D] border-white/[0.08] rounded-xl min-w-[140px] p-1">
+                  <DropdownMenuItem
+                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10 text-[12px] cursor-pointer rounded-lg px-3 py-2"
+                    onClick={() => {
+                      setDeleteId(chat.id);
+                      setShowDeleteDialog(true);
+                    }}
+                  >
+                    <Trash2 className="size-3.5 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))}
         </div>
       </div>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-[#0C0C0D] border-white/[0.08] rounded-xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete your
-              chat and remove it from our servers.
+            <AlertDialogTitle className="text-foreground">Delete Chat</AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-foreground/60 text-[13px]">
+              This action cannot be undone. This will permanently delete your chat.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>
-              Continue
+            <AlertDialogCancel className="border-white/[0.08] hover:bg-white/[0.06] rounded-lg text-[13px]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-500 hover:bg-red-600 rounded-lg text-[13px]"
+            >
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

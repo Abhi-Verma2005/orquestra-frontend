@@ -2,6 +2,7 @@
 
 import { Message } from "ai";
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import { toast } from "sonner";
 
 // WebSocket message types matching backend protocol
 export enum MessageType {
@@ -103,6 +104,7 @@ export interface SendMessageData {
 }
 
 export interface ChatMessage {
+  id?: string;
   role: "user" | "assistant" | "system" | "function" | "tool";
   content: string;
   name?: string;
@@ -120,6 +122,7 @@ interface WebSocketContextType {
   leaveChat: (chatId: string) => void;
   onMessage: (handler: (message: WebSocketMessage) => void) => () => void;
   onEvent: (eventType: MessageType, handler: (payload: unknown) => void) => () => void;
+  reconnect: () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | null>(null);
@@ -127,11 +130,11 @@ const WebSocketContext = createContext<WebSocketContextType | null>(null);
 // Helper for readyState names (used in logging)
 const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
 
-// WebSocket URL for chat WebSocket server (port 8080, root path)
-// Format: ws://host:port/ or wss://host:port/ for production
-const WS_URL = process.env.NEXT_PUBLIC_CHAT_WS_URL || "ws://localhost:8000/";
-const RECONNECT_DELAY = 3000;
-const MAX_RECONNECT_ATTEMPTS = 5;
+// WebSocket URL for chat WebSocket server
+// Format: ws://host:port/ws or wss://host:port/ws for production
+const WS_URL = process.env.NEXT_PUBLIC_CHAT_WS_URL || "ws://localhost:8000/ws";
+const RECONNECT_DELAY = 1000;
+const MAX_RECONNECT_ATTEMPTS = 0; // Disable automatic retries in background
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<WebSocketState>("disconnected");
@@ -143,6 +146,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const currentChatIdRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   const shouldReconnectRef = useRef(true);
+  const toastIdRef = useRef<string | number | null>(null);
 
   const connect = useCallback(() => {
     const currentReadyState = wsRef.current?.readyState;
@@ -153,7 +157,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
     setState("connecting");
 
-    console.log("State connecting")
 
     try {
       const ws = new WebSocket(WS_URL);
@@ -161,19 +164,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onopen = () => {
         setState("connected");
-        console.log("State connected")
         reconnectAttemptsRef.current = 0;
 
         // Rejoin current chat if there was one
         if (currentChatIdRef.current && ws.readyState === WebSocket.OPEN) {
-          console.log("State sending message")
           const message: WebSocketMessage = {
             type: MessageType.JoinChat,
             payload: { chat_id: currentChatIdRef.current, user_id: currentUserIdRef.current || undefined },
             timestamp: Date.now(),
             message_id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
           };
-          console.log("sending join chat message: ", message)
           ws.send(JSON.stringify(message));
         }
       };
@@ -181,15 +181,15 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       ws.onmessage = (event) => {
         try {
           const parsed = JSON.parse(event.data);
-          
+
           // Check if it's a RoomMessage format (from backend broadcast)
           if (parsed.room_id && parsed.payload && !parsed.type) {
             // Convert RoomMessage to ChatMessage event
             const chatMessage = parsed.payload as ChatMessage;
-            
+
             // Emit as ChatMessage event
             const eventHandlers = eventHandlersRef.current.get(MessageType.ChatMessage);
-            
+
             if (eventHandlers) {
               eventHandlers.forEach((handler) => {
                 try {
@@ -201,12 +201,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             }
             return;
           }
-          
+
           // Otherwise, treat as WebSocketMessage
           if (!parsed.type) {
             return;
           }
-          
+
           const message: WebSocketMessage = parsed;
 
           // Notify all message handlers
@@ -235,45 +235,30 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       };
 
       ws.onerror = (error) => {
-        // Check for common error scenarios
+        // Keep as warnings for debugging, but don't use console.error which can be caught by error boundaries/crash reports
         if (WS_URL.startsWith('ws://') && window.location.protocol === 'https:') {
-          console.error('[WebSocket] SECURITY ISSUE: Trying to use ws:// (insecure) on https:// page. Use wss:// instead!');
+          console.warn('[WebSocket] SECURITY ISSUE: Trying to use ws:// (insecure) on https:// page. Use wss:// instead!');
         }
-        
+
         if (!WS_URL.includes('://')) {
-          console.error('[WebSocket] INVALID URL: Missing protocol (ws:// or wss://)');
+          console.warn('[WebSocket] INVALID URL: Missing protocol (ws:// or wss://)');
         }
-        
+
         setState("error");
       };
 
       ws.onclose = (event) => {
-        if (event.code === 1006) {
-          console.error('[WebSocket] Abnormal closure (1006) - Network connection lost or server unreachable');
-        }
-        
-        if (!event.wasClean) {
-          console.error('[WebSocket] Connection was NOT cleanly closed - indicates an error');
-        }
-        
-        setState("disconnected");
         wsRef.current = null;
 
-        // Attempt reconnect if needed
-        if (shouldReconnectRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttemptsRef.current++;
-          const delay = RECONNECT_DELAY * reconnectAttemptsRef.current;
-          
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, delay);
-        } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-          console.error('[WebSocket] Max reconnect attempts reached. Stopping reconnection.');
+        // If it wasn't a clean close, or it was an abnormal closure, show the error toast
+        if (!event.wasClean || event.code === 1006) {
           setState("error");
+        } else {
+          setState("disconnected");
         }
       };
     } catch (error) {
-      console.error('[WebSocket] Exception during connection:', error instanceof Error ? error.message : String(error));
+      // Silent fail here as the 'error' state will handle the UI
       setState("error");
     }
   }, []);
@@ -297,7 +282,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const readyStateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
 
     if (!ws || readyState !== WebSocket.OPEN) {
-      console.error('[WebSocket] Cannot send message - WebSocket not open');
+      console.warn('[WebSocket] Cannot send message - WebSocket not open');
       return;
     }
 
@@ -373,7 +358,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       eventHandlersRef.current.set(eventType, new Set());
     }
     eventHandlersRef.current.get(eventType)!.add(handler);
-    
+
     return () => {
       const handlers = eventHandlersRef.current.get(eventType);
       if (handlers) {
@@ -381,6 +366,45 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       }
     };
   }, []);
+
+  // Handle error state with a toast
+  useEffect(() => {
+    if (state === "error") {
+      if (toastIdRef.current) {
+        toast.dismiss(toastIdRef.current);
+      }
+
+      toastIdRef.current = toast.error("Connection lost", {
+        description: "WebSocket connection failed. Would you like to try reconnecting?",
+        duration: Infinity,
+        action: {
+          label: "Try Reconnect",
+          onClick: () => {
+            reconnectAttemptsRef.current = 0;
+            shouldReconnectRef.current = true;
+            connect();
+          },
+        },
+      });
+    } else if (state === "connected") {
+      if (toastIdRef.current) {
+        toast.dismiss(toastIdRef.current);
+        toastIdRef.current = null;
+      }
+
+      toast.success("Connected", {
+        description: "WebSocket connection established.",
+        duration: 3000,
+      });
+    }
+
+    return () => {
+      if (toastIdRef.current && state !== "error") {
+        toast.dismiss(toastIdRef.current);
+        toastIdRef.current = null;
+      }
+    };
+  }, [state, connect]);
 
   // Connect on mount
   useEffect(() => {
@@ -398,6 +422,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     leaveChat,
     onMessage,
     onEvent,
+    reconnect: () => {
+      reconnectAttemptsRef.current = 0;
+      shouldReconnectRef.current = true;
+      connect();
+    },
   };
 
   return (

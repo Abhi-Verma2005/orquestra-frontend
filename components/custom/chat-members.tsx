@@ -98,13 +98,13 @@ export function ChatMembers({ chatId, currentUserId, isOwner }: ChatMembersProps
         <Button
           variant="ghost"
           size="icon"
-          className="relative h-9 w-9"
+          className="relative size-9"
         >
-          <Users className="h-5 w-5" />
+          <Users className="size-5" />
           {members.length > 0 && (
             <Badge
               variant="secondary"
-              className="absolute -right-1 -top-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+              className="absolute -right-1 -top-1 size-5 rounded-full p-0 flex items-center justify-center text-xs"
             >
               {members.length}
             </Badge>
@@ -114,7 +114,7 @@ export function ChatMembers({ chatId, currentUserId, isOwner }: ChatMembersProps
       <SheetContent className="w-full sm:max-w-md">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
+            <Users className="size-5" />
             Chat Members
           </SheetTitle>
           <SheetDescription>
@@ -140,8 +140,8 @@ export function ChatMembers({ chatId, currentUserId, isOwner }: ChatMembersProps
                   className="flex items-center justify-between rounded-lg border bg-card p-3 hover:bg-accent/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                      <Users className="h-4 w-4 text-primary" />
+                    <div className="flex size-8 items-center justify-center rounded-full bg-primary/10">
+                      <Users className="size-4 text-primary" />
                     </div>
                     <div className="flex flex-col">
                       <span className="text-sm font-medium">
@@ -162,10 +162,10 @@ export function ChatMembers({ chatId, currentUserId, isOwner }: ChatMembersProps
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            className="size-8 text-muted-foreground hover:text-destructive"
                             onClick={() => setMemberToRemove(member.userId)}
                           >
-                            <X className="h-4 w-4" />
+                            <X className="size-4" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>

@@ -5,18 +5,11 @@
  * It maintains a clear state machine and handles all state transitions.
  */
 
-import { useEffect, useReducer, useCallback } from 'react';
-import { useWebSocket } from '@/contexts/websocket-context';
-import { MessageType } from '@/contexts/websocket-context';
-import type {
-  ChatUIState,
-  ChatUIEvent,
-  ToolInvocation,
-  TextDeltaPayload,
-  FunctionCallStartPayload,
-  FunctionCallPayload,
-  FunctionCallEndPayload,
-} from '@/types/chat-ui-state';
+import { useReducer, useEffect, useCallback } from 'react';
+
+import type { ChatUIState, ToolInvocation, ChatUIEvent, TextDeltaPayload, FunctionCallStartPayload, FunctionCallPayload, FunctionCallEndPayload } from '@/types/chat-ui-state';
+
+import { useWebSocket, MessageType } from '@/contexts/websocket-context';
 
 
 interface WebSocketEventsState {
@@ -304,7 +297,8 @@ export function useWebSocketEvents(chatId: string | null) {
 
     const unsubscribe = onEvent(
       MessageType.TextStream,
-      (payload: TextDeltaPayload) => {
+      (p: any) => {
+        const payload = p as TextDeltaPayload;
         dispatch({
           type: 'TEXT_DELTA_RECEIVED',
           delta: payload.delta,
@@ -321,7 +315,8 @@ export function useWebSocketEvents(chatId: string | null) {
 
     const unsubscribe = onEvent(
       MessageType.FunctionCallStart,
-      (payload: FunctionCallStartPayload) => {
+      (p: any) => {
+        const payload = p as FunctionCallStartPayload;
         // Generate temporary ID (will be replaced when FunctionCall arrives)
         const tempId = `temp_${payload.name}_${Date.now()}`;
 
@@ -342,7 +337,8 @@ export function useWebSocketEvents(chatId: string | null) {
 
     const unsubscribe = onEvent(
       MessageType.FunctionCall,
-      (payload: FunctionCallPayload) => {
+      (p: any) => {
+        const payload = p as FunctionCallPayload;
         // Dispatch tool args to update the card
         dispatch({
           type: 'TOOL_ARGS_RECEIVED',
@@ -362,7 +358,8 @@ export function useWebSocketEvents(chatId: string | null) {
 
     const unsubscribe = onEvent(
       MessageType.FunctionResult,
-      (payload: { name: string; result: unknown }) => {
+      (p: any) => {
+        const payload = p as { name: string; result: unknown };
         // Dispatch tool result to update the card
         dispatch({
           type: 'TOOL_RESULT_RECEIVED',
@@ -381,7 +378,8 @@ export function useWebSocketEvents(chatId: string | null) {
 
     const unsubscribe = onEvent(
       MessageType.FunctionCallEnd,
-      (payload: FunctionCallEndPayload) => {
+      (p: any) => {
+        const payload = p as FunctionCallEndPayload;
         dispatch({
           type: 'TOOL_END',
           toolName: payload.name,

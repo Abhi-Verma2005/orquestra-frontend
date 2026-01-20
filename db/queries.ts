@@ -5,7 +5,7 @@ import { desc, eq, and, sql, or, lt, gte, ilike } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-import { chat, chatMembers, chatInvites, users } from "./schema";
+import { chat, chatMembers, chatInvites, users, agents, workflows, workflowNodes, workflowEdges, apiKeys, modelConfigs } from "./schema";
 
 // Native database connection
 let client = postgres(process.env.POSTGRES_URL || process.env.DATABASE_URL!);
@@ -58,10 +58,10 @@ export async function createUser(email: string, password: string) {
   try {
     const salt = genSaltSync(10);
     const hash = hashSync(password, salt);
-    
+
     // Generate a UUID for the user ID
     const userId = crypto.randomUUID();
-    
+
     return await db.insert(users).values({
       id: userId,
       email,
@@ -94,11 +94,11 @@ export async function saveChat({
       messages: messagesJson,
       updatedAt: now,
     };
-    
+
     if (title !== undefined) {
       updateData.title = title;
     }
-    
+
     if (summary !== undefined) {
       updateData.summary = summary;
     }
@@ -119,12 +119,12 @@ export async function saveChat({
       return inserted;
     } catch (insertError: any) {
       // Check if it's a duplicate key error (PostgreSQL error code 23505)
-      const isDuplicateKey = 
+      const isDuplicateKey =
         insertError?.code === '23505' ||
         insertError?.severity === 'ERROR' ||
-        (typeof insertError?.message === 'string' && 
-         insertError.message.includes('duplicate key') &&
-         insertError.message.includes('Chat_pkey'));
+        (typeof insertError?.message === 'string' &&
+          insertError.message.includes('duplicate key') &&
+          insertError.message.includes('Chat_pkey'));
 
       if (isDuplicateKey) {
         // Chat was created by another request (race condition), update instead
@@ -182,7 +182,7 @@ export async function getChatsByUserId({ id }: { id: string }) {
       .select()
       .from(chat)
       .where(eq(chat.userId, id));
-    
+
     // Try to get chats where user is a member (table might not exist if migration hasn't run)
     let memberChats: Array<{ chat: any }> = [];
     try {
@@ -195,26 +195,26 @@ export async function getChatsByUserId({ id }: { id: string }) {
       // If chatMembers table doesn't exist, just return owned chats
       if (memberError?.message?.includes("does not exist") || memberError?.code === "42P01") {
         console.warn("chatMembers table not found, returning only owned chats");
-        return ownedChats.sort((a, b) => 
+        return ownedChats.sort((a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
       }
       throw memberError;
     }
-    
+
     // Combine and deduplicate by chat ID
     const allChats = [
       ...ownedChats,
       ...memberChats.map(m => m.chat)
     ];
-    
+
     // Remove duplicates and sort by createdAt
     const uniqueChats = Array.from(
       new Map(allChats.map(c => [c.id, c])).values()
-    ).sort((a, b) => 
+    ).sort((a, b) =>
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-    
+
     return uniqueChats;
   } catch (error) {
     console.error("Failed to get chats by user from database", error);
@@ -252,7 +252,7 @@ export async function addChatMember(chatId: string, userId: string, role: "owner
     const existing = await db
       .select()
       .from(chatMembers)
-        .where(and(
+      .where(and(
         eq(chatMembers.chatId, chatId),
         eq(chatMembers.userId, userId)
       ))
@@ -261,23 +261,23 @@ export async function addChatMember(chatId: string, userId: string, role: "owner
     if (existing.length > 0) {
       return existing[0]; // Already a member
     }
-    
+
     const [member] = await db
       .insert(chatMembers)
-        .values({
+      .values({
         chatId,
         userId,
         role,
         joinedAt: new Date(),
-        })
-        .returning();
+      })
+      .returning();
 
     // Mark chat as group chat if not already
     await db
       .update(chat)
       .set({ isGroupChat: true })
       .where(eq(chat.id, chatId));
-    
+
     return member;
   } catch (error) {
     console.error("Failed to add chat member");
@@ -314,7 +314,7 @@ export async function isUserInChat(chatId: string, userId: string): Promise<bool
     if (chatRecord.length > 0) {
       return true;
     }
-    
+
     // Check if user is member
     const member = await db
       .select()
@@ -347,7 +347,7 @@ export async function createChatInvite({
   try {
     // Generate unique invite code
     const inviteCode = crypto.randomUUID().replace(/-/g, '').substring(0, 16);
-    
+
     const [invite] = await db
       .insert(chatInvites)
       .values({
@@ -360,7 +360,7 @@ export async function createChatInvite({
         usedCount: 0,
       })
       .returning();
-    
+
     return invite;
   } catch (error) {
     console.error("Failed to create chat invite");
@@ -392,21 +392,21 @@ export async function redeemInviteCode(inviteCode: string, userId: string) {
         .from(chatInvites)
         .where(eq(chatInvites.inviteCode, inviteCode))
         .limit(1);
-      
+
       if (!invite) {
         throw new Error("Invite not found");
       }
-      
+
       // Check if expired
       if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
         throw new Error("Invite has expired");
       }
-      
+
       // Check if max uses reached
       if (invite.maxUses && invite.usedCount >= invite.maxUses) {
         throw new Error("Invite has reached maximum uses");
       }
-      
+
       // Check if user is already a member (check both owner and member)
       const chatRecord = await tx
         .select()
@@ -416,11 +416,11 @@ export async function redeemInviteCode(inviteCode: string, userId: string) {
           eq(chat.userId, userId)
         ))
         .limit(1);
-      
+
       if (chatRecord.length > 0) {
         throw new Error("User is already a member of this chat");
       }
-      
+
       const existingMember = await tx
         .select()
         .from(chatMembers)
@@ -429,11 +429,11 @@ export async function redeemInviteCode(inviteCode: string, userId: string) {
           eq(chatMembers.userId, userId)
         ))
         .limit(1);
-      
+
       if (existingMember.length > 0) {
         throw new Error("User is already a member of this chat");
       }
-      
+
       // Add user to chat members
       await tx
         .insert(chatMembers)
@@ -443,26 +443,26 @@ export async function redeemInviteCode(inviteCode: string, userId: string) {
           role: "member",
           joinedAt: new Date(),
         });
-      
+
       // Mark chat as group chat
       await tx
         .update(chat)
         .set({ isGroupChat: true })
         .where(eq(chat.id, invite.chatId));
-      
+
       // Increment used count
       await tx
         .update(chatInvites)
         .set({ usedCount: invite.usedCount + 1 })
         .where(eq(chatInvites.id, invite.id));
-      
+
       // Get chat details
       const [chatResult] = await tx
         .select()
         .from(chat)
         .where(eq(chat.id, invite.chatId))
         .limit(1);
-      
+
       return chatResult;
     });
   } catch (error) {
@@ -470,3 +470,218 @@ export async function redeemInviteCode(inviteCode: string, userId: string) {
     throw error;
   }
 }
+
+// Agent Queries
+export async function getAgentsByUserId(userId: string) {
+  try {
+    return await db
+      .select()
+      .from(agents)
+      .where(eq(agents.userId, userId))
+      .orderBy(desc(agents.createdAt));
+  } catch (error) {
+    console.error("Failed to get agents by user from database", error);
+    throw error;
+  }
+}
+
+export async function getAgentById(id: string) {
+  try {
+    const [agent] = await db.select().from(agents).where(eq(agents.id, id));
+    return agent;
+  } catch (error) {
+    console.error(`[DB] Error fetching agent ${id}:`, error);
+    throw error;
+  }
+}
+
+export async function createAgent(data: {
+  userId: string;
+  name: string;
+  description?: string;
+  mode: "simple" | "advanced";
+  systemPrompt?: string;
+  modelConfigId?: string;
+  workflowId?: string;
+}) {
+  try {
+    const [newAgent] = await db.insert(agents).values({
+      ...data,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    return newAgent;
+  } catch (error) {
+    console.error("Failed to create agent", error);
+    throw error;
+  }
+}
+
+export async function createWorkflow(name: string, description?: string) {
+  try {
+    const [workflow] = await db.insert(workflows).values({
+      name,
+      description,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    return workflow;
+  } catch (error) {
+    console.error("Failed to create workflow", error);
+    throw error;
+  }
+}
+
+export async function createWorkflowNode(data: {
+  workflowId: string;
+  nodeKey: string;
+  label?: string;
+  nodeType: "agent" | "tool" | "conditional";
+  systemPrompt?: string;
+  modelConfigId?: string;
+  position?: any;
+}) {
+  try {
+    const [node] = await db.insert(workflowNodes).values({
+      ...data,
+      createdAt: new Date(),
+    }).returning();
+    return node;
+  } catch (error) {
+    console.error("Failed to create workflow node", error);
+    throw error;
+  }
+}
+
+export async function createWorkflowEdge(data: {
+  workflowId: string;
+  sourceNodeKey: string;
+  targetNodeKey: string;
+  label?: string;
+  condition?: any;
+}) {
+  try {
+    const [edge] = await db.insert(workflowEdges).values({
+      ...data,
+      createdAt: new Date(),
+    }).returning();
+    return edge;
+  } catch (error) {
+    console.error("Failed to create workflow edge", error);
+    throw error;
+  }
+}
+
+export async function saveApiKey(userId: string, provider: string, key: string, label?: string) {
+  try {
+    // Call Rust backend to encrypt and store the API key
+    // Use absolute URL for server-side fetch
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
+    const response = await fetch(`${backendUrl}/api/apikeys`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId,
+        provider,
+        apiKey: key,
+        label,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to save API key: ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error("Failed to save API key", error);
+    throw error;
+  }
+}
+
+export async function getModelConfigsByUserId(userId: string) {
+  try {
+    return await db.select().from(modelConfigs).where(eq(modelConfigs.userId, userId));
+  } catch (error) {
+    console.error("Failed to get model configs", error);
+    throw error;
+  }
+}
+
+export async function createModelConfig(data: {
+  userId: string;
+  name: string;
+  provider: string;
+  model: string;
+  apiKeyId: string;
+  temperature?: number;
+  maxTokens?: number;
+}) {
+  try {
+    const [config] = await db.insert(modelConfigs).values({
+      ...data,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    return config;
+  } catch (error) {
+    console.error("Failed to create model config", error);
+    throw error;
+  }
+}
+
+export async function updateAgent(id: string, data: {
+  name?: string;
+  description?: string;
+  systemPrompt?: string;
+}) {
+  try {
+    const [updatedAgent] = await db.update(agents)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(agents.id, id))
+      .returning();
+    return updatedAgent;
+  } catch (error) {
+    console.error("Failed to update agent", error);
+    throw error;
+  }
+}
+
+export async function getModelConfigById(id: string) {
+  try {
+    const [config] = await db.select().from(modelConfigs).where(eq(modelConfigs.id, id));
+    return config;
+  } catch (error) {
+    console.error("Failed to get model config", error);
+    throw error;
+  }
+}
+
+export async function updateModelConfig(id: string, data: {
+  provider?: string;
+  model?: string;
+  apiKeyId?: string;
+  temperature?: number;
+  maxTokens?: number;
+}) {
+  try {
+    const [updatedConfig] = await db.update(modelConfigs)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(modelConfigs.id, id))
+      .returning();
+    return updatedConfig;
+  } catch (error) {
+    console.error("Failed to update model config", error);
+    throw error;
+  }
+}
+
+

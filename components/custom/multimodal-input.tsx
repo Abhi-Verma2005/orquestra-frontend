@@ -12,35 +12,34 @@ import {
   ChangeEvent,
 } from "react";
 import { toast } from "sonner";
+import { ChevronDown, Bot, X, Plus, Globe, Mic, Sparkles, Settings } from "lucide-react";
 
-import { ArrowUpIcon, StopIcon, GlobeIcon, ImageIcon, LoaderIcon } from "./icons";
+import { useAgents } from "@/features/chat/hooks/use-agents";
+
+import { ArrowUpIcon, StopIcon, ImageIcon, LoaderIcon } from "./icons";
 import Logo from "./logo";
 import { PreviewAttachment } from "./preview-attachment";
 import useWindowSize from "./use-window-size";
 import { Textarea } from "../ui/textarea";
-
-// Removed static time-based greetings; we fetch a dynamic title and show skeleton while loading
 
 const suggestedActions = [
   {
     title: "What can you help me with?",
     label: "Discover capabilities and features",
     action: "What can you help me with? What are your capabilities?",
+    icon: Sparkles,
   },
   {
     title: "Explain this to me",
     label: "Get a simple explanation",
     action: "Can you explain this in simple terms?",
+    icon: Sparkles,
   },
   {
     title: "Give me suggestions",
     label: "Get recommendations and ideas",
     action: "Can you give me some suggestions or recommendations?",
-  },
-  {
-    title: "Help me get started",
-    label: "Begin with a helpful guide",
-    action: "Help me get started. What should I know?",
+    icon: Sparkles,
   },
 ];
 
@@ -55,6 +54,8 @@ export function MultimodalInput({
   messages,
   append,
   handleSubmit,
+  selectedAgent,
+  setSelectedAgent,
 }: {
   input: string;
   setInput: (value: string) => void;
@@ -74,10 +75,11 @@ export function MultimodalInput({
     },
     chatRequestOptions?: ChatRequestOptions,
   ) => void;
+  selectedAgent: { id: string; name: string; description?: string } | null;
+  setSelectedAgent: (agent: { id: string; name: string; description?: string } | null) => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
-  const [pageTitleBase] = useState<string>("Web3 Chat");
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -89,14 +91,18 @@ export function MultimodalInput({
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
       const scrollHeight = textareaRef.current.scrollHeight;
-      const maxHeight = 200; // max height in pixels (about 12-13 lines)
+      const maxHeight = 200;
       const newHeight = Math.min(scrollHeight, maxHeight);
       textareaRef.current.style.height = `${newHeight}px`;
     }
   };
 
+  const { agents } = useAgents();
+  const [showAgentDropdown, setShowAgentDropdown] = useState(false);
+
   const handleInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(event.target.value);
+    const newValue = event.target.value;
+    setInput(newValue);
     adjustHeight();
   };
 
@@ -169,142 +175,37 @@ export function MultimodalInput({
     [setAttachments],
   );
 
-  const [aiGreeting, setAiGreeting] = useState<string>("");
-  const [aiSubtitle, setAiSubtitle] = useState<string>("");
-  const [isTitleLoading, setIsTitleLoading] = useState<boolean>(true);
   const [isClient, setIsClient] = useState(false);
   useEffect(() => { setIsClient(true); }, []);
 
-  // Update document title for SEO when there's no conversation yet
-  useEffect(() => {
-    const shouldShowEmpty = messages.length === 0 && attachments.length === 0 && uploadQueue.length === 0;
-    if (typeof document !== "undefined" && shouldShowEmpty) {
-      const shortTitle = aiGreeting || "Growth Through Links";
-      document.title = `${shortTitle} | ${pageTitleBase}`;
-    }
-  }, [messages.length, attachments.length, uploadQueue.length, aiGreeting, pageTitleBase]);
-
-  // Fetch AI-generated three-word greeting once per page load
-  useEffect(() => {
-    const run = async () => {
-      try {
-        // Use an in-memory global to keep the greeting stable during SPA navigation
-        // but allow a new one after a full reload (globals reset on reload)
-        const w = typeof window !== 'undefined' ? (window as any) : undefined;
-        // Prefer a single cached object with both greeting and subtitle
-        if (w && w.__OMS_HERO__ && typeof w.__OMS_HERO__ === 'object') {
-          const cached = w.__OMS_HERO__ as { greeting?: string; subtitle?: string };
-          if (cached.greeting) setAiGreeting(cached.greeting);
-          if (cached.subtitle) setAiSubtitle(cached.subtitle);
-          setIsTitleLoading(false);
-          return;
-        }
-
-        const response = await fetch('/api/greeting');
-        const data = await response.json();
-        if (data?.greeting && typeof data.greeting === 'string') {
-          setAiGreeting(data.greeting);
-          if (typeof data.subtitle === 'string') setAiSubtitle(data.subtitle);
-          if (w) {
-            // Cache both greeting and subtitle to avoid partial UI on SPA transitions
-            w.__OMS_HERO__ = { greeting: data.greeting, subtitle: data.subtitle };
-          }
-        }
-      } catch {
-        // keep fallback greeting
-      }
-      finally {
-        setIsTitleLoading(false);
-      }
-    };
-    run();
-  }, []);
-
-  // Rotating placeholder for the text area to guide user workflow
-  const placeholderSteps = [
-    "Ask me anything",
-    "Get help with a task",
-    "Learn something new",
-    "Start a conversation",
-    "What's on your mind?",
-  ];
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const [slideshowOn, setSlideshowOn] = useState(true);
-  const slideshowTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    const noContent =
-      messages.length === 0 &&
-      attachments.length === 0 &&
-      uploadQueue.length === 0 &&
-      input.length === 0;
-
-    // Once content appears, permanently stop slideshow
-    if (!noContent) {
-      setSlideshowOn(false);
-    }
-
-    // Guard: stop if slideshow disabled or content present
-    if (!noContent || !slideshowOn) {
-      if (slideshowTimeoutRef.current) {
-        clearTimeout(slideshowTimeoutRef.current);
-        slideshowTimeoutRef.current = null;
-      }
-      return;
-    }
-
-    // Schedule next step exactly after 2 seconds
-    slideshowTimeoutRef.current = setTimeout(() => {
-      setPlaceholderIndex((current) => (current + 1) % placeholderSteps.length);
-    }, 2000);
-
-    return () => {
-      if (slideshowTimeoutRef.current) {
-        clearTimeout(slideshowTimeoutRef.current);
-        slideshowTimeoutRef.current = null;
-      }
-    };
-  }, [messages.length, attachments.length, uploadQueue.length, input.length, slideshowOn, placeholderSteps.length, placeholderIndex]);
-  const rotatingPlaceholder = placeholderSteps[placeholderIndex];
+  const placeholderText = messages.length > 0 ? "Send a follow up..." : "Ask me anything...";
 
   return (
     <div className="relative w-full flex flex-col gap-4">
-      {messages.length === 0 &&
-        attachments.length === 0 &&
-        uploadQueue.length === 0 && (
-          <div className="flex flex-col gap-8 items-center w-full md:px-0 mx-auto md:max-w-[700px]">
-            {/* Subtle gradient background accent */}
-            <div className="pointer-events-none absolute -z-10 inset-0 flex items-center justify-center">
-              <div className="w-[800px] h-[280px] rounded-full blur-3xl opacity-30 dark:opacity-25 bg-gradient-to-b from-violet-500/40 via-violet-500/0 to-transparent" />
-            </div>
-            {/* Welcome Header */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0 }}
-              className="flex flex-col items-center gap-2 text-center"
-            >
-              <div className="flex items-center gap-4">
-                <Logo href="#" size={32} />
-                {isTitleLoading ? (
-                  <div className="h-[28px] w-[220px] rounded-md bg-zinc-200 dark:bg-zinc-700 animate-pulse" />
-                ) : (
-                  <h1 className="text-2xl md:text-3xl font-semibold text-foreground">
-                    {aiGreeting}
-                  </h1>
-                )}
-              </div>
-              {isTitleLoading ? (
-                <div className="mt-1 h-[14px] w-[320px] rounded-md bg-zinc-200 dark:bg-zinc-700 animate-pulse" />
-              ) : (
-                aiSubtitle ? (
-                  <p className="text-sm text-muted-foreground max-w-[560px]">{aiSubtitle}</p>
-                ) : null
-              )}
-            </motion.div>
-
-            
+      {/* Empty State - Blink Style */}
+      {messages.length === 0 && attachments.length === 0 && uploadQueue.length === 0 && (
+        <div className="flex flex-col gap-6 items-center w-full mx-auto max-w-3xl mb-4">
+          {/* Subtle Background */}
+          <div className="pointer-events-none absolute -z-10 inset-0 flex items-center justify-center">
+            <div className="w-[600px] h-[600px] rounded-full blur-[120px] opacity-30 bg-blue-500/20" />
           </div>
-        )}
+
+          {/* Welcome Header - Blink Style */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0 }}
+            className="flex flex-col items-center gap-3 text-center"
+          >
+            <h1 className="text-[32px] md:text-[42px] font-normal tracking-tight text-foreground italic">
+              What can I help you build?
+            </h1>
+            <p className="text-[14px] text-muted-foreground/70 max-w-md">
+              Start a conversation with AI to build websites, apps, and more.
+            </p>
+          </motion.div>
+        </div>
+      )}
 
       <input
         type="file"
@@ -335,55 +236,56 @@ export function MultimodalInput({
         </div>
       )}
 
-      <div className={`relative w-full bg-card border border-border rounded-xl shadow-sm focus-within:shadow-md transition-shadow overflow-visible group ${isCreatingChat ? 'animate-pulse' : ''}`} aria-busy={isCreatingChat ? true : undefined}>
-        {isCreatingChat && (
-          <div className="pointer-events-none absolute inset-0 z-0">
-            <div 
-              className="absolute inset-0 opacity-60"
-              style={{
-                background: 'linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(17,24,39,0.12) 100%)'
-              }}
-            />
-            <div 
-              className="absolute inset-0"
-              style={{
-                background: 'linear-gradient(90deg, transparent 0%, rgba(59,130,246,0.18) 50%, transparent 100%)',
-                backgroundSize: '200% 100%',
-                animation: 'border-light-border 2s ease-in-out infinite'
-              }}
-            />
+      {/* Main Input Container - Blink Style */}
+      <div className={`relative w-full rounded-xl border border-border/40 bg-[#0C0C0D] shadow-xl overflow-visible ${isCreatingChat ? 'animate-pulse' : ''}`}>
+        {/* Agent Dropdown */}
+        {showAgentDropdown && agents.length > 0 && (
+          <div className="absolute bottom-full left-4 mb-2 w-72 bg-[#0C0C0D] border border-border/30 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2">
+            <div className="p-2 max-h-64 overflow-y-auto">
+              <div className="text-[11px] font-medium text-muted-foreground/60 px-2 py-1 mb-1 uppercase tracking-wider">Select AI Agent</div>
+              {agents.map((agent) => (
+                <button
+                  type="button"
+                  key={agent.id}
+                  onClick={() => {
+                    setSelectedAgent(agent);
+                    setShowAgentDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-[13px] rounded-lg hover:bg-muted/30 transition-colors flex items-center gap-2 ${selectedAgent?.id === agent.id ? 'bg-blue-500/10 border border-blue-500/20' : ''}`}
+                >
+                  <div className="size-7 rounded-full bg-blue-500/20 flex items-center justify-center text-[11px] font-medium text-blue-400">
+                    {agent.name.substring(0, 1).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col overflow-hidden flex-1">
+                    <span className="font-medium text-foreground truncate">{agent.name}</span>
+                    {agent.description && (
+                      <span className="text-[11px] text-muted-foreground/60 truncate">{agent.description}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* TEXT AREA + correctly positioned placeholder inside the input area */}
-        <div className="relative z-10">
-          {isClient && (input.length === 0 && (slideshowOn || messages.length > 0)) && (
-            <div className={`pointer-events-none absolute ${messages.length > 0 ? 'top-3' : 'top-4'} left-4 text-sm text-muted-foreground`}>
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={slideshowOn ? `slide-${placeholderIndex}` : 'follow-up-static'}
-                  initial={{ opacity: 0, y: 2 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -2 }}
-                  transition={{ duration: 0.25 }}
-                >
-                  {slideshowOn ? rotatingPlaceholder : 'Add a follow up'}
-                </motion.span>
-              </AnimatePresence>
+        {/* Textarea */}
+        <div className="relative z-10 p-5">
+          {isClient && input.length === 0 && (
+            <div className="pointer-events-none absolute top-5 left-5 text-[15px] text-muted-foreground/50">
+              {placeholderText}
             </div>
           )}
 
           <Textarea
             ref={textareaRef}
-            placeholder={""}
+            placeholder=""
             value={input}
             onChange={handleInput}
-            className={`w-full min-h-[32px] max-h-[200px] overflow-y-auto resize-none text-sm bg-transparent border-0 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 px-4 pb-1.5 shadow-none ${messages.length > 0 ? 'pt-3' : 'pt-4'}`}
+            className="w-full min-h-[40px] max-h-[200px] overflow-y-auto resize-none text-[15px] bg-transparent border-0 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 shadow-none text-foreground"
             rows={2}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-
                 if (isLoading) {
                   toast.error("Please wait for the model to finish its response!");
                 } else {
@@ -394,87 +296,107 @@ export function MultimodalInput({
           />
         </div>
 
-        {/* Bottom Control Bar */}
-        <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/50 bg-card">
-          {/* Left hint below divider */}
-          <div className="text-[11px] text-muted-foreground/70 select-none">
-          </div>
-
-          {/* Right side - Multimodal input icons */}
-          <div className="flex items-center gap-1">
-            {isLoading && (
-              <button className="p-1.5 text-muted-foreground hover:text-foreground">
-                <LoaderIcon size={14} />
-              </button>
-            )}
-            <button className="p-1.5 text-muted-foreground hover:text-foreground">
-              <GlobeIcon size={14} />
-            </button>
-            <button 
-              className="p-1.5 text-muted-foreground hover:text-foreground"
-              onClick={(event) => {
-                event.preventDefault();
-                fileInputRef.current?.click();
-              }}
+        {/* Bottom Toolbar - Blink Style */}
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border/20">
+          {/* Left Tools */}
+          <div className="flex items-center gap-3 text-muted-foreground/70 text-[13px]">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="hover:text-foreground transition-colors p-1"
               disabled={isLoading}
             >
-              <ImageIcon size={14} />
+              <Plus className="h-4 w-4" />
+            </button>
+
+            {selectedAgent ? (
+              <div className="flex items-center gap-2 rounded-full bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 text-[12px]">
+                <div className="size-4 rounded-full bg-blue-500/30 flex items-center justify-center text-[9px] font-medium text-blue-400">
+                  {selectedAgent.name.substring(0, 1).toUpperCase()}
+                </div>
+                <span className="text-blue-400 max-w-[100px] truncate">{selectedAgent.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAgent(null)}
+                  className="hover:text-foreground ml-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowAgentDropdown(!showAgentDropdown)}
+                className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                disabled={agents.length === 0}
+              >
+                <Settings className="h-3.5 w-3.5" />
+                <span>Auto</span>
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+            )}
+          </div>
+
+          {/* Right Tools */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/60 cursor-pointer hover:text-foreground transition-colors">
+              <Globe className="h-3.5 w-3.5" />
+              <span>Public</span>
+            </div>
+            <button
+              type="button"
+              className="text-muted-foreground/60 hover:text-foreground transition-colors p-1"
+            >
+              <Mic className="h-4 w-4" />
             </button>
             {isLoading ? (
               <button
-                className="rounded-full p-1.5 h-fit bg-primary hover:bg-primary/90 text-primary-foreground"
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors"
                 onClick={(event) => {
                   event.preventDefault();
                   stop();
                 }}
               >
-                <StopIcon size={14} />
+                <StopIcon size={16} />
               </button>
             ) : (
               <button
-                className="rounded-full p-1.5 h-fit bg-primary hover:bg-primary/90 text-primary-foreground"
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50"
                 onClick={(event) => {
                   event.preventDefault();
                   submitForm();
                 }}
                 disabled={input.length === 0 || uploadQueue.length > 0}
               >
-                <ArrowUpIcon size={14} />
+                <ArrowUpIcon size={16} />
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Quick Prompts below the text area */}
+      {/* Suggestion Pills - Blink Style */}
       {messages.length === 0 && attachments.length === 0 && uploadQueue.length === 0 && (
-        <div className="flex flex-wrap gap-2 justify-center w-full">
-          {suggestedActions.map((suggestedAction, index) => (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              transition={{ delay: 0.05 * index }}
-              key={index}
-              className="relative group"
-            >
-              <button
+        <div className="flex flex-col items-center gap-3 mt-2">
+          <p className="text-[12px] text-muted-foreground/60">Not sure where to start? Try one of these:</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {suggestedActions.map((action, index) => (
+              <motion.button
+                key={index}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 * index }}
                 type="button"
-                onClick={(event) => {
-                  event.preventDefault();
-                  setInput(suggestedAction.action);
-                }}
-                className="border border-border bg-card text-foreground rounded-full px-3 py-1.5 text-xs hover:bg-secondary/50 transition-all duration-200 whitespace-nowrap"
+                onClick={() => setInput(action.action)}
+                className="flex items-center gap-1.5 rounded-full border border-border/40 bg-muted/20 px-3 py-1.5 text-[12px] text-muted-foreground hover:bg-muted/40 hover:text-foreground transition-colors"
               >
-                <span>{suggestedAction.title}</span>
-              </button>
-              {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-muted text-muted-foreground text-xs rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                {suggestedAction.label}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-muted"></div>
-              </div>
-            </motion.div>
-          ))}
+                <action.icon className="h-3 w-3" />
+                <span>{action.title}</span>
+              </motion.button>
+            ))}
+          </div>
         </div>
       )}
     </div>

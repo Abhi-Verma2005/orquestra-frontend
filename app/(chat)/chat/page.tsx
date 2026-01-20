@@ -1,4 +1,5 @@
 import React from "react";
+
 import { auth } from "@/app/(auth)/auth";
 import { ChatContainer } from "@/features/chat";
 import { generateUUID } from "@/lib/utils";

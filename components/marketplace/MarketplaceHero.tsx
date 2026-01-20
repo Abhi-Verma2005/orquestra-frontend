@@ -1,13 +1,14 @@
 "use client";
 
 import { Search, Sparkles } from "lucide-react";
-import { Input } from "@/components/ui/input";
+
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export function MarketplaceHero() {
     return (
         <div className="relative overflow-hidden bg-background border-b border-border">
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] [background-size:24px_24px]" />
             <div className="absolute inset-0 bg-gradient-to-b from-background/0 via-background/50 to-background" />
 
             <div className="container relative mx-auto px-4 py-16 md:py-24 flex flex-col items-center text-center">
